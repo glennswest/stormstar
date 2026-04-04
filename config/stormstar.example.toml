@@ -1,0 +1,18 @@
+# StormStar Configuration
+
+# HTTP listen address
+listen = "0.0.0.0:8585"
+
+# Data directory for packages, repos, database
+data_dir = "/data/stormstar"
+
+# Default organization name
+organization = "Default"
+
+# Log level (trace, debug, info, warn, error)
+log_level = "info"
+
+# TLS configuration (optional)
+# [tls]
+# cert = "/etc/stormstar/tls/cert.pem"
+# key = "/etc/stormstar/tls/key.pem"

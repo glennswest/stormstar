@@ -1,0 +1,19 @@
+//! Host inventory CRUD + registration.
+
+use axum::{Router, routing::get};
+
+use super::AppState;
+
+pub fn routes() -> Router<AppState> {
+    Router::new()
+        .route("/hosts", get(list).post(create))
+        .route("/hosts/{id}", get(show).put(update).delete(delete))
+        .route("/hosts/register", axum::routing::post(register))
+}
+
+async fn list() -> &'static str { "[]" }
+async fn show() -> &'static str { "{}" }
+async fn create() -> &'static str { "{}" }
+async fn update() -> &'static str { "{}" }
+async fn delete() -> &'static str { "{}" }
+async fn register() -> &'static str { "{}" }
