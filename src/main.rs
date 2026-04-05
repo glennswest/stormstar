@@ -93,10 +93,15 @@ async fn main() -> anyhow::Result<()> {
 
             // Build API router
             let state = stormstar::api::AppState {
+                db: database.clone(),
+                config: config.clone(),
+            };
+            let content_state = stormstar::content::serve::ContentState {
                 db: database,
                 config: config.clone(),
             };
-            let app = stormstar::api::router(state);
+            let app = stormstar::api::router(state)
+                .merge(stormstar::content::serve::routes().with_state(content_state));
 
             // Bind and serve
             let listener = tokio::net::TcpListener::bind(config.listen.as_str()).await?;
