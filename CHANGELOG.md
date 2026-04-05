@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### 2026-04-05
+- **feat:** Errata sync engine — standalone errata fetch across all synced repos (API + CLI + UI)
+- **feat:** HTMX interactive UI — create/delete forms on all pages (repos, views, envs, hosts, keys)
+- **feat:** Errata page stats breakdown (security/bugfix/enhancement counts)
+- **feat:** Dashboard clickable stat cards, activation key count added
+- **feat:** CLI `stormstar errata list|sync` commands
+- **chore:** CI/CD workflow for mkube self-hosted runner (GitHub Actions, podman, GHCR)
+- **chore:** Dockerfile (scratch base, musl static binary)
+- **fix:** Version mismatch in main.rs (0.1.0 → 0.2.0)
+- **docs:** Updated README with architecture, CI/CD, container build sections
+
 ## [v0.2.0] — 2026-04-05
 
 ### Added
