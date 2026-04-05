@@ -1,8 +1,15 @@
-//! updateinfo.xml errata parser.
+//! updateinfo.xml errata parser + standalone errata sync engine.
+
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
+use native_db::Database;
 use quick_xml::Reader;
 use quick_xml::events::Event;
+use uuid::Uuid;
+
+use crate::db::models::*;
+use super::repodata;
 
 /// Parsed erratum from updateinfo.xml.
 #[derive(Debug, Clone)]
@@ -158,4 +165,126 @@ pub fn parse_updateinfo(xml: &str) -> Result<Vec<ParsedErratum>> {
     }
 
     Ok(errata)
+}
+
+/// Sync errata for a single repository by re-fetching updateinfo.xml.
+pub async fn sync_errata(db: &Arc<Database<'static>>, repo_id: &str) -> Result<u64> {
+    let repo = {
+        let r = db.r_transaction()?;
+        r.get().primary::<Repository>(repo_id.to_string())?
+            .ok_or_else(|| anyhow::anyhow!("repository not found: {}", repo_id))?
+    };
+
+    let client = reqwest::Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()?;
+
+    let base_url = repo.url.trim_end_matches('/');
+
+    // Fetch repomd.xml to locate updateinfo entry
+    let repomd_url = format!("{}/repodata/repomd.xml", base_url);
+    let repomd_xml = client.get(&repomd_url).send().await?
+        .error_for_status()
+        .context("failed to fetch repomd.xml")?
+        .text().await?;
+
+    let entries = repodata::parse_repomd(&repomd_xml)?;
+
+    let updateinfo_entry = entries.iter()
+        .find(|e| e.data_type == "updateinfo")
+        .ok_or_else(|| anyhow::anyhow!("no updateinfo in repomd.xml for '{}'", repo.name))?;
+
+    let updateinfo_url = format!("{}/{}", base_url, updateinfo_entry.location);
+    tracing::info!("Fetching errata from {}", updateinfo_url);
+
+    let updateinfo_gz = client.get(&updateinfo_url).send().await?
+        .error_for_status()
+        .context("failed to fetch updateinfo.xml")?
+        .bytes().await?;
+
+    let updateinfo_xml = repodata::decompress_gz(&updateinfo_gz)?;
+    let parsed_errata = parse_updateinfo(&updateinfo_xml)?;
+
+    // Clear old errata for this repo, insert new
+    let rw = db.rw_transaction()?;
+    let existing: Vec<Erratum> = rw.scan().primary()
+        .map_err(|e| anyhow::anyhow!("{}", e))?
+        .all()
+        .map_err(|e| anyhow::anyhow!("{}", e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+    for er in existing.iter().filter(|e| e.repo_id == repo.id) {
+        rw.remove(er.clone()).map_err(|e| anyhow::anyhow!("{}", e))?;
+    }
+
+    let count = parsed_errata.len() as u64;
+    for pe in &parsed_errata {
+        let erratum = Erratum {
+            id: Uuid::new_v4().to_string(),
+            advisory_id: pe.advisory_id.clone(),
+            repo_id: repo.id.clone(),
+            title: pe.title.clone(),
+            erratum_type: match pe.erratum_type.as_str() {
+                "Security" => ErratumType::Security,
+                "Enhancement" => ErratumType::Enhancement,
+                _ => ErratumType::Bugfix,
+            },
+            severity: match pe.severity.as_str() {
+                "Critical" => ErratumSeverity::Critical,
+                "Important" => ErratumSeverity::Important,
+                "Moderate" => ErratumSeverity::Moderate,
+                "Low" => ErratumSeverity::Low,
+                _ => ErratumSeverity::None,
+            },
+            description: pe.description.clone(),
+            issued: pe.issued.clone(),
+            updated: pe.updated.clone(),
+            cves: pe.cves.clone(),
+            package_names: pe.package_names.clone(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+        };
+        rw.insert(erratum).map_err(|e| anyhow::anyhow!("{}", e))?;
+    }
+
+    // Update repo errata count
+    let old = rw.get().primary::<Repository>(repo.id.clone())
+        .map_err(|e| anyhow::anyhow!("{}", e))?
+        .ok_or_else(|| anyhow::anyhow!("repository vanished during errata sync"))?;
+    let mut updated = old.clone();
+    updated.errata_count = count;
+    rw.update(old, updated).map_err(|e| anyhow::anyhow!("{}", e))?;
+
+    rw.commit().map_err(|e| anyhow::anyhow!("{}", e))?;
+
+    tracing::info!("Synced {} errata for '{}'", count, repo.name);
+    Ok(count)
+}
+
+/// Sync errata across all synced repositories.
+pub async fn sync_all_errata(db: &Arc<Database<'static>>) -> Result<u64> {
+    let repos = {
+        let r = db.r_transaction()?;
+        let all: Vec<Repository> = r.scan().primary()
+            .map_err(|e| anyhow::anyhow!("{}", e))?
+            .all()
+            .map_err(|e| anyhow::anyhow!("{}", e))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| anyhow::anyhow!("{}", e))?;
+        all.into_iter()
+            .filter(|r| r.sync_state == RepoSyncState::Synced)
+            .collect::<Vec<_>>()
+    };
+
+    tracing::info!("Syncing errata for {} synced repositories", repos.len());
+    let mut total = 0u64;
+    for repo in &repos {
+        match sync_errata(db, &repo.id).await {
+            Ok(count) => total += count,
+            Err(e) => tracing::warn!("Errata sync skipped for '{}': {}", repo.name, e),
+        }
+    }
+
+    tracing::info!("Errata sync complete: {} total errata across all repos", total);
+    Ok(total)
 }

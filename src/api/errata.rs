@@ -14,6 +14,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/errata", get(list))
         .route("/errata/{id}", get(show))
+        .route("/errata/sync", axum::routing::post(sync))
 }
 
 #[derive(Deserialize, Default)]
@@ -64,4 +65,20 @@ async fn show(
         .map_err(|e| AppError::internal(e.to_string()))?
         .ok_or_else(|| AppError::not_found("erratum not found"))?;
     Ok(Json(item))
+}
+
+async fn sync(
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let db = state.db.clone();
+    tokio::spawn(async move {
+        if let Err(e) = crate::content::errata::sync_all_errata(&db).await {
+            tracing::error!("Errata sync failed: {}", e);
+        }
+    });
+
+    Ok(Json(serde_json::json!({
+        "status": "syncing",
+        "message": "errata sync started for all synced repositories",
+    })))
 }

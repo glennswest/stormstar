@@ -7,7 +7,7 @@ use stormstar::config::Config;
 use stormstar::db;
 
 #[derive(Parser)]
-#[command(name = "stormstar", version = "0.1.0", about = "Lightweight RPM content management")]
+#[command(name = "stormstar", version = "0.2.0", about = "Lightweight RPM content management")]
 struct Cli {
     /// Path to configuration file
     #[arg(short, long, default_value = "/etc/stormstar/stormstar.toml")]
@@ -50,6 +50,12 @@ enum Command {
     Key {
         #[command(subcommand)]
         action: stormstar::cli::KeyAction,
+    },
+
+    /// Errata management
+    Errata {
+        #[command(subcommand)]
+        action: stormstar::cli::ErrataAction,
     },
 }
 
@@ -123,6 +129,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Env { action } => stormstar::cli::handle_env(&config, action).await?,
         Command::Host { action } => stormstar::cli::handle_host(&config, action).await?,
         Command::Key { action } => stormstar::cli::handle_key(&config, action).await?,
+        Command::Errata { action } => stormstar::cli::handle_errata(&config, action).await?,
     }
 
     Ok(())

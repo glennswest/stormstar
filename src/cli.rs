@@ -225,6 +225,31 @@ pub async fn handle_host(config: &Config, action: HostAction) -> anyhow::Result<
     Ok(())
 }
 
+// ── Errata commands ─────────────────────────────────────────────────
+
+#[derive(clap::Subcommand)]
+pub enum ErrataAction {
+    /// List all errata
+    List,
+    /// Sync errata across all synced repositories
+    Sync,
+}
+
+pub async fn handle_errata(config: &Config, action: ErrataAction) -> anyhow::Result<()> {
+    let base = base_url(config);
+    match action {
+        ErrataAction::List => {
+            let v = get_json(&format!("{}/errata", base)).await?;
+            println!("{}", serde_json::to_string_pretty(&v)?);
+        }
+        ErrataAction::Sync => {
+            let v = post_json(&format!("{}/errata/sync", base), &serde_json::json!({})).await?;
+            println!("{}", serde_json::to_string_pretty(&v)?);
+        }
+    }
+    Ok(())
+}
+
 // ── Activation Key commands ──────────────────────────────────────────
 
 #[derive(clap::Subcommand)]
