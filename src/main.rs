@@ -78,7 +78,7 @@ async fn main() -> anyhow::Result<()> {
                 .with_env_filter(filter)
                 .init();
 
-            tracing::info!("StormStar v0.1.0 starting");
+            tracing::info!("StormStar v0.2.0 starting");
 
             // Ensure data directories
             config.ensure_dirs()?;
