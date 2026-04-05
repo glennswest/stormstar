@@ -131,22 +131,34 @@ button:hover, .btn:hover { background: var(--pink); }
 button.danger { background: var(--red); }
 button.danger:hover { background: #ff3333; }
 
-input, select {
+button.sm { padding: 0.3rem 0.6rem; font-size: 0.75rem; }
+
+input, select, textarea {
     background: var(--bg);
     border: 1px solid var(--bg-light);
     color: var(--fg);
     padding: 0.5rem;
     border-radius: 4px;
     font-size: 0.9rem;
+    width: 100%;
 }
 
-input:focus, select:focus {
+input:focus, select:focus, textarea:focus {
     outline: none;
     border-color: var(--purple);
 }
 
 .form-group { margin-bottom: 0.75rem; }
 .form-group label { display: block; color: var(--fg-dim); font-size: 0.85rem; margin-bottom: 0.25rem; }
+
+.form-row {
+    display: flex;
+    gap: 1rem;
+    align-items: end;
+    flex-wrap: wrap;
+}
+
+.form-row .form-group { flex: 1; min-width: 150px; }
 
 .toolbar {
     display: flex;
@@ -155,8 +167,39 @@ input:focus, select:focus {
     margin-bottom: 1rem;
 }
 
+.toolbar .actions { display: flex; gap: 0.5rem; }
+
+details.create-form {
+    margin-bottom: 1rem;
+}
+
+details.create-form summary {
+    list-style: none;
+    cursor: pointer;
+}
+
+details.create-form summary::-webkit-details-marker { display: none; }
+
+details.create-form[open] .card { margin-top: 0.5rem; }
+
+.empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--fg-dim);
+}
+
+.empty-state p { margin-bottom: 1rem; }
+
+.url-cell {
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .htmx-indicator { display: none; }
 .htmx-request .htmx-indicator { display: inline; }
+.htmx-request button { opacity: 0.5; pointer-events: none; }
 
 .flash {
     padding: 0.75rem 1rem;
