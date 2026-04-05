@@ -9,13 +9,14 @@ use axum::{
 use serde::Deserialize;
 
 use super::{AppState, AppError};
-use crate::db::models::{Repository, RepoSyncState};
+use crate::db::models::{Repository, Package};
 
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/repos", get(list).post(create))
         .route("/repos/{id}", get(show).put(update).delete(delete))
         .route("/repos/{id}/sync", axum::routing::post(sync))
+        .route("/repos/{id}/packages", get(packages))
 }
 
 #[derive(Deserialize)]
@@ -117,18 +118,51 @@ async fn delete(
 async fn sync(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<Json<Repository>, AppError> {
-    let rw = state.db.rw_transaction().map_err(|e| AppError::internal(e.to_string()))?;
-    let old: Repository = rw.get().primary(id)
+) -> Result<Json<serde_json::Value>, AppError> {
+    // Verify repo exists
+    {
+        let r = state.db.r_transaction().map_err(|e| AppError::internal(e.to_string()))?;
+        let _: Repository = r.get().primary(id.clone())
+            .map_err(|e| AppError::internal(e.to_string()))?
+            .ok_or_else(|| AppError::not_found("repository not found"))?;
+    }
+
+    // Spawn sync in background
+    let db = state.db.clone();
+    let repo_id = id.clone();
+    tokio::spawn(async move {
+        if let Err(e) = crate::content::repo::sync_repo(&db, &repo_id).await {
+            tracing::error!("Sync failed for {}: {}", repo_id, e);
+        }
+    });
+
+    Ok(Json(serde_json::json!({
+        "status": "syncing",
+        "repo_id": id,
+    })))
+}
+
+async fn packages(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<Vec<Package>>, AppError> {
+    let r = state.db.r_transaction().map_err(|e| AppError::internal(e.to_string()))?;
+
+    // Verify repo exists
+    let _: Repository = r.get().primary(id.clone())
         .map_err(|e| AppError::internal(e.to_string()))?
         .ok_or_else(|| AppError::not_found("repository not found"))?;
 
-    let mut updated = old.clone();
-    updated.sync_state = RepoSyncState::Syncing;
+    let all_pkgs: Vec<Package> = r.scan().primary()
+        .map_err(|e| AppError::internal(e.to_string()))?
+        .all()
+        .map_err(|e| AppError::internal(e.to_string()))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| AppError::internal(e.to_string()))?;
 
-    rw.update(old, updated.clone()).map_err(|e| AppError::internal(e.to_string()))?;
-    rw.commit().map_err(|e| AppError::internal(e.to_string()))?;
+    let repo_pkgs: Vec<Package> = all_pkgs.into_iter()
+        .filter(|p| p.repo_id == id)
+        .collect();
 
-    // TODO: spawn actual sync task
-    Ok(Json(updated))
+    Ok(Json(repo_pkgs))
 }
