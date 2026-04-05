@@ -1,1 +1,57 @@
-//! Dashboard page.
+//! Dashboard page — overview stats.
+
+use axum::extract::State;
+use axum::response::Html;
+
+use super::WebState;
+use super::style;
+use crate::db::models::*;
+
+pub async fn page(State(state): State<WebState>) -> Html<String> {
+    let r = state.db.r_transaction().unwrap();
+
+    let repo_count = r.scan().primary::<Repository>()
+        .map(|s| s.all().map(|a| a.count()).unwrap_or(0)).unwrap_or(0);
+    let pkg_count = r.scan().primary::<Package>()
+        .map(|s| s.all().map(|a| a.count()).unwrap_or(0)).unwrap_or(0);
+    let host_count = r.scan().primary::<Host>()
+        .map(|s| s.all().map(|a| a.count()).unwrap_or(0)).unwrap_or(0);
+    let errata_count = r.scan().primary::<Erratum>()
+        .map(|s| s.all().map(|a| a.count()).unwrap_or(0)).unwrap_or(0);
+    let cv_count = r.scan().primary::<ContentView>()
+        .map(|s| s.all().map(|a| a.count()).unwrap_or(0)).unwrap_or(0);
+    let env_count = r.scan().primary::<LifecycleEnvironment>()
+        .map(|s| s.all().map(|a| a.count()).unwrap_or(0)).unwrap_or(0);
+
+    let content = format!(
+        r#"<h1>Dashboard</h1>
+<div class="grid">
+    <div class="card stat">
+        <div class="value">{repo_count}</div>
+        <div class="label">Repositories</div>
+    </div>
+    <div class="card stat">
+        <div class="value">{pkg_count}</div>
+        <div class="label">Packages</div>
+    </div>
+    <div class="card stat">
+        <div class="value">{host_count}</div>
+        <div class="label">Hosts</div>
+    </div>
+    <div class="card stat">
+        <div class="value">{errata_count}</div>
+        <div class="label">Errata</div>
+    </div>
+    <div class="card stat">
+        <div class="value">{cv_count}</div>
+        <div class="label">Content Views</div>
+    </div>
+    <div class="card stat">
+        <div class="value">{env_count}</div>
+        <div class="label">Environments</div>
+    </div>
+</div>"#
+    );
+
+    Html(style::layout("Dashboard", "dashboard", &content))
+}
