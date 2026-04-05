@@ -1,4 +1,4 @@
-//! Sync Plan CRUD.
+//! Product CRUD.
 
 use axum::{
     Router, Json,
@@ -9,37 +9,32 @@ use axum::{
 use serde::Deserialize;
 
 use super::{AppState, AppError};
-use crate::db::models::SyncPlan;
+use crate::db::models::Product;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/sync_plans", get(list).post(create))
-        .route("/sync_plans/{id}", get(show).put(update).delete(delete))
+        .route("/products", get(list).post(create))
+        .route("/products/{id}", get(show).put(update).delete(delete))
 }
 
 #[derive(Deserialize)]
-struct CreatePlan {
+struct CreateProduct {
     org_id: String,
     name: String,
-    cron_expression: String,
+    label: String,
     #[serde(default)]
     description: String,
-    #[serde(default)]
-    repo_ids: Vec<String>,
 }
 
 #[derive(Deserialize)]
-struct UpdatePlan {
+struct UpdateProduct {
     name: Option<String>,
     description: Option<String>,
-    cron_expression: Option<String>,
-    repo_ids: Option<Vec<String>>,
-    enabled: Option<bool>,
 }
 
-async fn list(State(state): State<AppState>) -> Result<Json<Vec<SyncPlan>>, AppError> {
+async fn list(State(state): State<AppState>) -> Result<Json<Vec<Product>>, AppError> {
     let r = state.db.r_transaction().map_err(|e| AppError::internal(e.to_string()))?;
-    let items: Vec<SyncPlan> = r.scan().primary()
+    let items: Vec<Product> = r.scan().primary()
         .map_err(|e| AppError::internal(e.to_string()))?
         .all()
         .map_err(|e| AppError::internal(e.to_string()))?
@@ -51,45 +46,41 @@ async fn list(State(state): State<AppState>) -> Result<Json<Vec<SyncPlan>>, AppE
 async fn show(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<Json<SyncPlan>, AppError> {
+) -> Result<Json<Product>, AppError> {
     let r = state.db.r_transaction().map_err(|e| AppError::internal(e.to_string()))?;
-    let item: SyncPlan = r.get().primary(id)
+    let item: Product = r.get().primary(id)
         .map_err(|e| AppError::internal(e.to_string()))?
-        .ok_or_else(|| AppError::not_found("sync plan not found"))?;
+        .ok_or_else(|| AppError::not_found("product not found"))?;
     Ok(Json(item))
 }
 
 async fn create(
     State(state): State<AppState>,
-    Json(body): Json<CreatePlan>,
-) -> Result<(StatusCode, Json<SyncPlan>), AppError> {
-    let mut plan = SyncPlan::new(&body.org_id, &body.name, &body.cron_expression);
-    plan.description = body.description;
-    plan.repo_ids = body.repo_ids;
+    Json(body): Json<CreateProduct>,
+) -> Result<(StatusCode, Json<Product>), AppError> {
+    let mut product = Product::new(&body.org_id, &body.name, &body.label);
+    product.description = body.description;
 
     let rw = state.db.rw_transaction().map_err(|e| AppError::internal(e.to_string()))?;
-    rw.insert(plan.clone()).map_err(|e| AppError::internal(e.to_string()))?;
+    rw.insert(product.clone()).map_err(|e| AppError::internal(e.to_string()))?;
     rw.commit().map_err(|e| AppError::internal(e.to_string()))?;
 
-    Ok((StatusCode::CREATED, Json(plan)))
+    Ok((StatusCode::CREATED, Json(product)))
 }
 
 async fn update(
     State(state): State<AppState>,
     Path(id): Path<String>,
-    Json(body): Json<UpdatePlan>,
-) -> Result<Json<SyncPlan>, AppError> {
+    Json(body): Json<UpdateProduct>,
+) -> Result<Json<Product>, AppError> {
     let rw = state.db.rw_transaction().map_err(|e| AppError::internal(e.to_string()))?;
-    let old: SyncPlan = rw.get().primary(id)
+    let old: Product = rw.get().primary(id)
         .map_err(|e| AppError::internal(e.to_string()))?
-        .ok_or_else(|| AppError::not_found("sync plan not found"))?;
+        .ok_or_else(|| AppError::not_found("product not found"))?;
 
     let mut updated = old.clone();
     if let Some(name) = body.name { updated.name = name; }
     if let Some(desc) = body.description { updated.description = desc; }
-    if let Some(cron) = body.cron_expression { updated.cron_expression = cron; }
-    if let Some(repos) = body.repo_ids { updated.repo_ids = repos; }
-    if let Some(enabled) = body.enabled { updated.enabled = enabled; }
 
     rw.update(old, updated.clone()).map_err(|e| AppError::internal(e.to_string()))?;
     rw.commit().map_err(|e| AppError::internal(e.to_string()))?;
@@ -102,9 +93,9 @@ async fn delete(
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
     let rw = state.db.rw_transaction().map_err(|e| AppError::internal(e.to_string()))?;
-    let item: SyncPlan = rw.get().primary(id)
+    let item: Product = rw.get().primary(id)
         .map_err(|e| AppError::internal(e.to_string()))?
-        .ok_or_else(|| AppError::not_found("sync plan not found"))?;
+        .ok_or_else(|| AppError::not_found("product not found"))?;
 
     rw.remove(item).map_err(|e| AppError::internal(e.to_string()))?;
     rw.commit().map_err(|e| AppError::internal(e.to_string()))?;

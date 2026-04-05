@@ -1,5 +1,7 @@
 //! REST API — axum router, AppState, error types.
 
+pub mod orgs;
+pub mod products;
 pub mod repos;
 pub mod views;
 pub mod envs;
@@ -14,6 +16,7 @@ use axum::{
     Router,
     http::StatusCode,
     response::{IntoResponse, Response},
+    routing::get,
     Json,
 };
 use native_db::Database;
@@ -65,9 +68,25 @@ impl From<anyhow::Error> for AppError {
     }
 }
 
+#[derive(Serialize)]
+struct HealthResponse {
+    status: &'static str,
+    version: &'static str,
+}
+
+async fn health() -> Json<HealthResponse> {
+    Json(HealthResponse {
+        status: "ok",
+        version: "0.1.0",
+    })
+}
+
 /// Build the full API router.
 pub fn router(state: AppState) -> Router {
     let api = Router::new()
+        .route("/health", get(health))
+        .merge(orgs::routes())
+        .merge(products::routes())
         .merge(repos::routes())
         .merge(views::routes())
         .merge(envs::routes())

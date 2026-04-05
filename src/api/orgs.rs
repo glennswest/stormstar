@@ -1,4 +1,4 @@
-//! Sync Plan CRUD.
+//! Organization CRUD.
 
 use axum::{
     Router, Json,
@@ -9,37 +9,31 @@ use axum::{
 use serde::Deserialize;
 
 use super::{AppState, AppError};
-use crate::db::models::SyncPlan;
+use crate::db::models::Organization;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/sync_plans", get(list).post(create))
-        .route("/sync_plans/{id}", get(show).put(update).delete(delete))
+        .route("/organizations", get(list).post(create))
+        .route("/organizations/{id}", get(show).put(update).delete(delete))
 }
 
 #[derive(Deserialize)]
-struct CreatePlan {
-    org_id: String,
+struct CreateOrg {
     name: String,
-    cron_expression: String,
+    label: String,
     #[serde(default)]
     description: String,
-    #[serde(default)]
-    repo_ids: Vec<String>,
 }
 
 #[derive(Deserialize)]
-struct UpdatePlan {
+struct UpdateOrg {
     name: Option<String>,
     description: Option<String>,
-    cron_expression: Option<String>,
-    repo_ids: Option<Vec<String>>,
-    enabled: Option<bool>,
 }
 
-async fn list(State(state): State<AppState>) -> Result<Json<Vec<SyncPlan>>, AppError> {
+async fn list(State(state): State<AppState>) -> Result<Json<Vec<Organization>>, AppError> {
     let r = state.db.r_transaction().map_err(|e| AppError::internal(e.to_string()))?;
-    let items: Vec<SyncPlan> = r.scan().primary()
+    let items: Vec<Organization> = r.scan().primary()
         .map_err(|e| AppError::internal(e.to_string()))?
         .all()
         .map_err(|e| AppError::internal(e.to_string()))?
@@ -51,45 +45,41 @@ async fn list(State(state): State<AppState>) -> Result<Json<Vec<SyncPlan>>, AppE
 async fn show(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<Json<SyncPlan>, AppError> {
+) -> Result<Json<Organization>, AppError> {
     let r = state.db.r_transaction().map_err(|e| AppError::internal(e.to_string()))?;
-    let item: SyncPlan = r.get().primary(id)
+    let item: Organization = r.get().primary(id)
         .map_err(|e| AppError::internal(e.to_string()))?
-        .ok_or_else(|| AppError::not_found("sync plan not found"))?;
+        .ok_or_else(|| AppError::not_found("organization not found"))?;
     Ok(Json(item))
 }
 
 async fn create(
     State(state): State<AppState>,
-    Json(body): Json<CreatePlan>,
-) -> Result<(StatusCode, Json<SyncPlan>), AppError> {
-    let mut plan = SyncPlan::new(&body.org_id, &body.name, &body.cron_expression);
-    plan.description = body.description;
-    plan.repo_ids = body.repo_ids;
+    Json(body): Json<CreateOrg>,
+) -> Result<(StatusCode, Json<Organization>), AppError> {
+    let mut org = Organization::new(&body.name, &body.label);
+    org.description = body.description;
 
     let rw = state.db.rw_transaction().map_err(|e| AppError::internal(e.to_string()))?;
-    rw.insert(plan.clone()).map_err(|e| AppError::internal(e.to_string()))?;
+    rw.insert(org.clone()).map_err(|e| AppError::internal(e.to_string()))?;
     rw.commit().map_err(|e| AppError::internal(e.to_string()))?;
 
-    Ok((StatusCode::CREATED, Json(plan)))
+    Ok((StatusCode::CREATED, Json(org)))
 }
 
 async fn update(
     State(state): State<AppState>,
     Path(id): Path<String>,
-    Json(body): Json<UpdatePlan>,
-) -> Result<Json<SyncPlan>, AppError> {
+    Json(body): Json<UpdateOrg>,
+) -> Result<Json<Organization>, AppError> {
     let rw = state.db.rw_transaction().map_err(|e| AppError::internal(e.to_string()))?;
-    let old: SyncPlan = rw.get().primary(id)
+    let old: Organization = rw.get().primary(id)
         .map_err(|e| AppError::internal(e.to_string()))?
-        .ok_or_else(|| AppError::not_found("sync plan not found"))?;
+        .ok_or_else(|| AppError::not_found("organization not found"))?;
 
     let mut updated = old.clone();
     if let Some(name) = body.name { updated.name = name; }
     if let Some(desc) = body.description { updated.description = desc; }
-    if let Some(cron) = body.cron_expression { updated.cron_expression = cron; }
-    if let Some(repos) = body.repo_ids { updated.repo_ids = repos; }
-    if let Some(enabled) = body.enabled { updated.enabled = enabled; }
 
     rw.update(old, updated.clone()).map_err(|e| AppError::internal(e.to_string()))?;
     rw.commit().map_err(|e| AppError::internal(e.to_string()))?;
@@ -102,9 +92,9 @@ async fn delete(
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
     let rw = state.db.rw_transaction().map_err(|e| AppError::internal(e.to_string()))?;
-    let item: SyncPlan = rw.get().primary(id)
+    let item: Organization = rw.get().primary(id)
         .map_err(|e| AppError::internal(e.to_string()))?
-        .ok_or_else(|| AppError::not_found("sync plan not found"))?;
+        .ok_or_else(|| AppError::not_found("organization not found"))?;
 
     rw.remove(item).map_err(|e| AppError::internal(e.to_string()))?;
     rw.commit().map_err(|e| AppError::internal(e.to_string()))?;
