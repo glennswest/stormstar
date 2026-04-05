@@ -9,7 +9,10 @@
 - **feat:** Dashboard clickable stat cards, activation key count added
 - **feat:** CLI `stormstar errata list|sync` commands
 - **chore:** CI/CD workflow for mkube self-hosted runner (GitHub Actions, podman, GHCR)
-- **chore:** Dockerfile (scratch base, musl static binary)
+- **chore:** Containerfile (stormdbase, stormd supervised, aarch64-musl)
+- **chore:** deploy/stormd.toml — stormd supervisor config with liveness probe and UI proxy
+- **chore:** deploy/stormstar.yaml — mkube Pod manifest with vkube annotations
+- **chore:** .cargo/config.toml — aarch64-linux-musl cross-linker
 - **fix:** Version mismatch in main.rs (0.1.0 → 0.2.0)
 - **docs:** Updated README with architecture, CI/CD, container build sections
 

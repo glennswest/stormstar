@@ -1,0 +1,41 @@
+# stormd supervisor config for stormstar container
+# stormd is PID 1, stormstar is a supervised child process
+
+[general]
+name = "stormstar"
+log_dir = "/var/stormd/logs"
+
+[api]
+bind = "0.0.0.0:9080"
+
+[ssh]
+enabled = true
+bind = "0.0.0.0:2222"
+host_key = "/var/stormd/host_key"
+password = "stormd"
+
+[stormlog.terminal]
+rows = 50
+cols = 200
+scrollback = 10000
+
+[[process]]
+name = "stormstar"
+command = "/stormstar"
+args = ["serve"]
+working_dir = "/"
+on_failure = "restart"
+restart_delay_secs = 5
+max_restarts = 100
+restart_window_secs = 3600
+
+[process.liveness]
+type = "http"
+url = "http://localhost:8585/api/v1/health"
+interval_secs = 10
+failure_threshold = 3
+initial_delay_secs = 5
+
+[process.ui]
+label = "StormStar"
+proxy = "http://127.0.0.1:8585/"
