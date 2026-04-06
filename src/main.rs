@@ -7,7 +7,7 @@ use stormstar::config::Config;
 use stormstar::db;
 
 #[derive(Parser)]
-#[command(name = "stormstar", version = "0.2.0", about = "Lightweight RPM content management")]
+#[command(name = "stormstar", version = "0.3.0", about = "Lightweight RPM and APT content management")]
 struct Cli {
     /// Path to configuration file
     #[arg(short, long, default_value = "/etc/stormstar/stormstar.toml")]
@@ -84,7 +84,7 @@ async fn main() -> anyhow::Result<()> {
                 .with_env_filter(filter)
                 .init();
 
-            tracing::info!("StormStar v0.2.0 starting");
+            tracing::info!("StormStar v0.3.0 starting");
 
             // Ensure data directories
             config.ensure_dirs()?;

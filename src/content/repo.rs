@@ -1,4 +1,4 @@
-//! RPM repository sync engine.
+//! Repository sync engine — RPM (yum) and APT (deb).
 
 use std::sync::Arc;
 
@@ -9,6 +9,7 @@ use uuid::Uuid;
 use crate::db::models::*;
 use super::repodata;
 use super::errata as errata_parser;
+use super::deb;
 
 /// Sync a repository: fetch metadata, parse packages and errata, store in DB.
 pub async fn sync_repo(db: &Arc<Database<'static>>, repo_id: &str) -> Result<()> {
@@ -32,7 +33,10 @@ pub async fn sync_repo(db: &Arc<Database<'static>>, repo_id: &str) -> Result<()>
         rw.commit()?;
     }
 
-    let result = do_sync(db, &repo).await;
+    let result = match repo.content_type.as_str() {
+        "deb" => do_sync_deb(db, &repo).await,
+        _ => do_sync_yum(db, &repo).await,
+    };
 
     // Update final state
     let rw = db.rw_transaction()?;
@@ -60,7 +64,7 @@ pub async fn sync_repo(db: &Arc<Database<'static>>, repo_id: &str) -> Result<()>
     result.map(|_| ())
 }
 
-async fn do_sync(db: &Arc<Database<'static>>, repo: &Repository) -> Result<(u64, u64)> {
+async fn do_sync_yum(db: &Arc<Database<'static>>, repo: &Repository) -> Result<(u64, u64)> {
     let client = reqwest::Client::builder()
         .danger_accept_invalid_certs(true)
         .build()?;
@@ -195,4 +199,99 @@ async fn do_sync(db: &Arc<Database<'static>>, repo: &Repository) -> Result<(u64,
     }
 
     Ok((pkg_count, errata_count))
+}
+
+/// Sync a deb (APT) repository: fetch Release, then Packages.gz for each component/arch combo.
+async fn do_sync_deb(db: &Arc<Database<'static>>, repo: &Repository) -> Result<(u64, u64)> {
+    let client = reqwest::Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()?;
+
+    let base_url = repo.url.trim_end_matches('/');
+    let codename = repo.codename.as_deref().unwrap_or("stable");
+    let components: Vec<&str> = repo.components.as_deref().unwrap_or("main")
+        .split(',')
+        .map(|s| s.trim())
+        .collect();
+    let architectures: Vec<&str> = repo.architectures.as_deref().unwrap_or("amd64")
+        .split(',')
+        .map(|s| s.trim())
+        .collect();
+
+    // 1. Fetch Release file
+    let release_url = format!("{}/dists/{}/Release", base_url, codename);
+    tracing::info!("Fetching {}", release_url);
+    let _release_text = client.get(&release_url).send().await?
+        .error_for_status()
+        .context("failed to fetch Release")?
+        .text().await?;
+
+    // 2. Fetch Packages.gz for each component/arch combo
+    let mut all_deb_packages = Vec::new();
+
+    for component in &components {
+        for arch in &architectures {
+            let packages_url = format!(
+                "{}/dists/{}/{}/binary-{}/Packages.gz",
+                base_url, codename, component, arch
+            );
+            tracing::info!("Fetching {}", packages_url);
+
+            match client.get(&packages_url).send().await {
+                Ok(resp) => {
+                    if resp.status().is_success() {
+                        let gz_data = resp.bytes().await?;
+                        let text = deb::decompress_packages_gz(&gz_data)?;
+                        let pkgs = deb::parse_packages(&text);
+                        tracing::info!("Parsed {} packages from {}/{}", pkgs.len(), component, arch);
+                        all_deb_packages.extend(pkgs);
+                    } else {
+                        tracing::warn!("Packages.gz not found for {}/binary-{}: {}", component, arch, resp.status());
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("Could not fetch Packages.gz for {}/binary-{}: {}", component, arch, e);
+                }
+            }
+        }
+    }
+
+    // 3. Store packages in DB (clear old, insert new)
+    let rw = db.rw_transaction()?;
+
+    let existing: Vec<Package> = rw.scan().primary()
+        .map_err(|e| anyhow::anyhow!("{}", e))?
+        .all()
+        .map_err(|e| anyhow::anyhow!("{}", e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+    for pkg in existing.iter().filter(|p| p.repo_id == repo.id) {
+        rw.remove(pkg.clone()).map_err(|e| anyhow::anyhow!("{}", e))?;
+    }
+
+    let pkg_count = all_deb_packages.len() as u64;
+    for dp in &all_deb_packages {
+        let (epoch, _upstream, revision) = deb::parse_deb_version(&dp.version);
+        let pkg = Package {
+            id: Uuid::new_v4().to_string(),
+            repo_id: repo.id.clone(),
+            name: dp.package.clone(),
+            epoch,
+            version: dp.version.clone(),
+            release: revision,
+            arch: dp.architecture.clone(),
+            summary: dp.description.clone(),
+            sha256: dp.sha256.clone(),
+            size: dp.size,
+            location_href: dp.filename.clone(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+        };
+        rw.insert(pkg).map_err(|e| anyhow::anyhow!("{}", e))?;
+    }
+
+    rw.commit().map_err(|e| anyhow::anyhow!("{}", e))?;
+
+    // No errata sync for deb repos
+    Ok((pkg_count, 0))
 }

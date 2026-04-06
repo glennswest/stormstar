@@ -1,5 +1,26 @@
 # Changelog
 
+## [v0.3.0] — 2026-04-05
+
+### Added
+- **APT (Debian/Ubuntu) repository support** — full deb content lifecycle alongside RPM
+- **Deb metadata parsing** — RFC822 Packages file parser, Release file parser, version parsing (epoch:upstream-revision)
+- **Deb metadata generation** — generate Packages and Release files from DB records
+- **Deb sync engine** — fetch dists/Release + Packages.gz for each component/arch combo, store in DB
+- **APT serving routes** — 5 new endpoints at `/pulp/deb/` for Release, InRelease, Packages, Packages.gz, pool proxy
+- **Content type selection** — repos can be "yum" (RPM) or "deb" (APT) with type-specific fields
+- **Deb-specific model fields** — codename, components, architectures on Repository
+- **CLI deb support** — `--content-type deb --codename --components --architectures` flags on repo create
+- **Web UI deb support** — content type dropdown, conditional deb fields, type badge column (purple=yum, cyan=deb)
+- **7 new tests** — parse_packages, parse_deb_version, parse_release, generate_packages, generate_release, roundtrip_packages, decompress_packages_gz
+- **Errata guard** — errata sync skips deb repos gracefully (no updateinfo.xml for APT)
+- **Content view filter** — FilterContentType::Deb variant, package filters work for both RPM and deb
+
+### Changed
+- Repository model extended with optional deb fields (backward compatible via `#[serde(default)]`)
+- Sync engine dispatches to yum or deb based on content_type
+- Errata sync filters out deb repos
+
 ## [Unreleased]
 
 ### 2026-04-05

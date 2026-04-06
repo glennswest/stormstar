@@ -44,7 +44,7 @@ pub fn compose(db: &Arc<Database<'static>>, cv_id: &str) -> Result<Vec<Package>>
         .collect();
 
     for filter in &filters {
-        if filter.content_type != FilterContentType::Rpm {
+        if filter.content_type != FilterContentType::Rpm && filter.content_type != FilterContentType::Deb {
             continue;
         }
         match filter.filter_type {

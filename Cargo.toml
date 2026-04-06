@@ -1,9 +1,9 @@
 [package]
 name = "stormstar"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 authors = ["Glenn West"]
-description = "Lightweight RPM content management for edge deployments"
+description = "Lightweight RPM and APT content management for edge deployments"
 repository = "https://github.com/glennswest/stormstar"
 license = "MIT"
 rust-version = "1.75"

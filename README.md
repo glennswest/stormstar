@@ -1,18 +1,20 @@
 # StormStar
 
-Lightweight RPM content management for edge deployments. Single static Rust binary providing RPM repository management, content views, lifecycle environments, host registration, and errata tracking — no external database or runtime dependencies.
+Lightweight RPM and APT content management for edge deployments. Single static Rust binary providing repository management for both YUM (RPM) and APT (Deb) ecosystems, content views, lifecycle environments, host registration, and errata tracking — no external database or runtime dependencies.
 
 ## Features
 
-- RPM repository sync from upstream mirrors (repomd.xml, primary.xml.gz, updateinfo.xml)
-- Standalone errata sync — re-fetch errata across all synced repos independently
-- Content views with include/exclude filters (name, arch, version glob matching)
+- **RPM repository sync** from upstream mirrors (repomd.xml, primary.xml.gz, updateinfo.xml)
+- **APT (Deb) repository sync** from upstream mirrors (Release, Packages.gz per component/arch)
+- Standalone errata sync — re-fetch errata across all synced RPM repos independently
+- Content views with include/exclude filters (name, arch, version glob matching) — works for both RPM and deb
 - Lifecycle environments (Library → Dev → Test → Prod) with promotion chain
 - Host registration with activation keys (usage limits, auto-key generation)
-- Errata tracking (security, bugfix, enhancement) with CVE mapping
-- Yum-compatible HTTP repo serving (Pulp-compatible URL layout)
-- Web UI with HTMX interactivity (Dracula dark theme, create/delete forms, sync buttons)
-- CLI management (repo, cv, env, host, key, errata commands)
+- Errata tracking (security, bugfix, enhancement) with CVE mapping (RPM repos)
+- **Yum-compatible HTTP repo serving** (Pulp-compatible URL layout at `/pulp/repos/`)
+- **APT-compatible HTTP repo serving** (dists/pool layout at `/pulp/deb/`)
+- Web UI with HTMX interactivity (Dracula dark theme, content type selection, type badges)
+- CLI management (repo, cv, env, host, key, errata commands) with deb-specific flags
 - Embedded database (native_db/redb — zero external dependencies)
 - TLS support via rustls (no OpenSSL dependency)
 - Static musl binary — single file deployment, ~15 MB stripped
@@ -39,7 +41,7 @@ Access the web UI at `http://localhost:8585/`
 │                    StormStar                         │
 ├───────────┬──────────┬──────────┬───────────────────┤
 │  Web UI   │ REST API │   CLI    │  Content Serving  │
-│  (HTMX)   │ (axum)   │ (clap)  │  (yum-compat)     │
+│  (HTMX)   │ (axum)   │ (clap)  │  (yum+apt compat) │
 ├───────────┴──────────┴──────────┴───────────────────┤
 │              Content Engine                          │
 │  repo sync · errata sync · view compose · lifecycle │
@@ -71,11 +73,16 @@ All actions use HTMX for inline interactivity — no full page reloads.
 ## CLI
 
 ```bash
-# Repository management
+# Repository management (YUM/RPM)
 stormstar repo list
 stormstar repo create --product-id <id> --name "CentOS Base" --url "https://mirror.centos.org/..."
 stormstar repo sync <repo-id>
 stormstar repo delete <repo-id>
+
+# Repository management (APT/Deb)
+stormstar repo create --product-id <id> --name "Ubuntu Jammy" \
+  --url "http://archive.ubuntu.com/ubuntu" \
+  --content-type deb --codename jammy --components "main,universe" --architectures "amd64,arm64"
 
 # Content views
 stormstar cv list
@@ -118,16 +125,36 @@ All endpoints under `/api/v1/`:
 | Activation Keys | `GET/POST /activation_keys`, `GET/PUT/DELETE /activation_keys/:id` |
 | Sync Plans | `GET/POST /sync_plans`, `GET/PUT/DELETE /sync_plans/:id` |
 
-## Yum Repository Serving
+## Repository Serving
 
-Synced repos are served at Pulp-compatible URLs:
+### YUM (RPM) Repos
+
+Synced RPM repos are served at Pulp-compatible URLs:
 
 ```
 /pulp/repos/<org>/<env>/<cv>/custom/<product>/<repo>/repodata/repomd.xml
 /pulp/repos/<org>/<env>/<cv>/custom/<product>/<repo>/Packages/<letter>/<filename>.rpm
 ```
 
-RPMs are proxied on-demand from the upstream repository.
+### APT (Deb) Repos
+
+Synced deb repos are served with standard APT layout:
+
+```
+/pulp/deb/<org>/<env>/<cv>/custom/<product>/<repo>/dists/<codename>/Release
+/pulp/deb/<org>/<env>/<cv>/custom/<product>/<repo>/dists/<codename>/InRelease
+/pulp/deb/<org>/<env>/<cv>/custom/<product>/<repo>/dists/<codename>/<component>/binary-<arch>/Packages
+/pulp/deb/<org>/<env>/<cv>/custom/<product>/<repo>/dists/<codename>/<component>/binary-<arch>/Packages.gz
+/pulp/deb/<org>/<env>/<cv>/custom/<product>/<repo>/pool/<component>/<prefix>/<source>/<filename>.deb
+```
+
+Configure on Debian/Ubuntu hosts:
+```bash
+echo "deb http://stormstar:8585/pulp/deb/myorg/production/base_os/custom/ubuntu/jammy_main jammy main" \
+  > /etc/apt/sources.list.d/stormstar.list
+```
+
+Packages are proxied on-demand from the upstream repository.
 
 ## Configuration
 
@@ -187,7 +214,7 @@ Triggers on push to `main` and pull requests.
 cargo test
 ```
 
-17 tests covering: repodata parsing, errata parsing, database CRUD, package NEVRA, repodata generation roundtrip.
+24 tests covering: repodata parsing, errata parsing, deb metadata parsing/generation, database CRUD, package NEVRA, roundtrip validation.
 
 ## License
 

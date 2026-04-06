@@ -28,6 +28,9 @@ struct CreateRepo {
     content_type: String,
     #[serde(default = "default_arch")]
     arch: String,
+    codename: Option<String>,
+    components: Option<String>,
+    architectures: Option<String>,
 }
 
 fn default_content_type() -> String { "yum".to_string() }
@@ -39,6 +42,9 @@ struct UpdateRepo {
     url: Option<String>,
     content_type: Option<String>,
     arch: Option<String>,
+    codename: Option<String>,
+    components: Option<String>,
+    architectures: Option<String>,
 }
 
 async fn list(State(state): State<AppState>) -> Result<Json<Vec<Repository>>, AppError> {
@@ -67,9 +73,21 @@ async fn create(
     State(state): State<AppState>,
     Json(body): Json<CreateRepo>,
 ) -> Result<(StatusCode, Json<Repository>), AppError> {
-    let mut repo = Repository::new(&body.product_id, &body.name, &body.url);
-    repo.content_type = body.content_type;
-    repo.arch = body.arch;
+    let repo = if body.content_type == "deb" {
+        Repository::new_deb(
+            &body.product_id,
+            &body.name,
+            &body.url,
+            body.codename.as_deref().unwrap_or("stable"),
+            body.components.as_deref().unwrap_or("main"),
+            body.architectures.as_deref().unwrap_or("amd64"),
+        )
+    } else {
+        let mut r = Repository::new(&body.product_id, &body.name, &body.url);
+        r.content_type = body.content_type;
+        r.arch = body.arch;
+        r
+    };
 
     let rw = state.db.rw_transaction().map_err(|e| AppError::internal(e.to_string()))?;
     rw.insert(repo.clone()).map_err(|e| AppError::internal(e.to_string()))?;
@@ -93,6 +111,9 @@ async fn update(
     if let Some(url) = body.url { updated.url = url; }
     if let Some(ct) = body.content_type { updated.content_type = ct; }
     if let Some(arch) = body.arch { updated.arch = arch; }
+    if let Some(cn) = body.codename { updated.codename = Some(cn); }
+    if let Some(comp) = body.components { updated.components = Some(comp); }
+    if let Some(archs) = body.architectures { updated.architectures = Some(archs); }
 
     rw.update(old, updated.clone()).map_err(|e| AppError::internal(e.to_string()))?;
     rw.commit().map_err(|e| AppError::internal(e.to_string()))?;

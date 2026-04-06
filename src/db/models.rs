@@ -84,12 +84,18 @@ pub struct Repository {
     pub name: String,
     pub label: String,
     pub url: String,
-    pub content_type: String,   // "yum"
+    pub content_type: String,   // "yum" or "deb"
     pub arch: String,           // "x86_64", "noarch"
     pub sync_state: RepoSyncState,
     pub last_sync: Option<String>,
     pub package_count: u64,
     pub errata_count: u64,
+    #[serde(default)]
+    pub codename: Option<String>,       // deb: e.g. "jammy", "bookworm"
+    #[serde(default)]
+    pub components: Option<String>,     // deb: e.g. "main,restricted,universe"
+    #[serde(default)]
+    pub architectures: Option<String>,  // deb: e.g. "amd64,arm64"
     pub created_at: String,
 }
 
@@ -108,6 +114,30 @@ impl Repository {
             last_sync: None,
             package_count: 0,
             errata_count: 0,
+            codename: None,
+            components: None,
+            architectures: None,
+            created_at: chrono::Utc::now().to_rfc3339(),
+        }
+    }
+
+    pub fn new_deb(product_id: &str, name: &str, url: &str, codename: &str, components: &str, architectures: &str) -> Self {
+        let label = name.to_lowercase().replace(' ', "_");
+        Self {
+            id: Uuid::new_v4().to_string(),
+            product_id: product_id.to_string(),
+            name: name.to_string(),
+            label,
+            url: url.to_string(),
+            content_type: "deb".to_string(),
+            arch: "amd64".to_string(),
+            sync_state: RepoSyncState::NotSynced,
+            last_sync: None,
+            package_count: 0,
+            errata_count: 0,
+            codename: Some(codename.to_string()),
+            components: Some(components.to_string()),
+            architectures: Some(architectures.to_string()),
             created_at: chrono::Utc::now().to_rfc3339(),
         }
     }
@@ -147,6 +177,24 @@ impl Package {
 
     pub fn filename(&self) -> String {
         format!("{}-{}-{}.{}.rpm", self.name, self.version, self.release, self.arch)
+    }
+
+    /// Filename for a .deb package: name_version-release_arch.deb
+    pub fn deb_filename(&self) -> String {
+        if self.release.is_empty() {
+            format!("{}_{}.deb", self.name, self.version)
+        } else {
+            format!("{}_{}_{}.deb", self.name, self.version, self.arch)
+        }
+    }
+
+    /// Pool prefix for APT pool layout: first letter, or "lib" + first letter for lib* packages.
+    pub fn deb_pool_prefix(&self) -> String {
+        if self.name.starts_with("lib") && self.name.len() > 3 {
+            format!("lib{}", &self.name[3..4])
+        } else {
+            self.name[..1].to_string()
+        }
     }
 }
 
@@ -254,6 +302,7 @@ pub enum FilterType {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum FilterContentType {
     Rpm,
+    Deb,
     Erratum,
 }
 

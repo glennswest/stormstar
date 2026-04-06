@@ -60,6 +60,18 @@ pub enum RepoAction {
         name: String,
         #[arg(long)]
         url: String,
+        /// Content type: "yum" (default) or "deb"
+        #[arg(long, default_value = "yum")]
+        content_type: String,
+        /// APT codename (e.g. "jammy", "bookworm") — deb repos only
+        #[arg(long)]
+        codename: Option<String>,
+        /// APT components (e.g. "main,restricted,universe") — deb repos only
+        #[arg(long)]
+        components: Option<String>,
+        /// APT architectures (e.g. "amd64,arm64") — deb repos only
+        #[arg(long)]
+        architectures: Option<String>,
     },
     /// Trigger repository sync
     Sync { id: String },
@@ -74,12 +86,16 @@ pub async fn handle_repo(config: &Config, action: RepoAction) -> anyhow::Result<
             let v = get_json(&format!("{}/repos", base)).await?;
             println!("{}", serde_json::to_string_pretty(&v)?);
         }
-        RepoAction::Create { product_id, name, url } => {
-            let body = serde_json::json!({
+        RepoAction::Create { product_id, name, url, content_type, codename, components, architectures } => {
+            let mut body = serde_json::json!({
                 "product_id": product_id,
                 "name": name,
                 "url": url,
+                "content_type": content_type,
             });
+            if let Some(cn) = codename { body["codename"] = serde_json::json!(cn); }
+            if let Some(comp) = components { body["components"] = serde_json::json!(comp); }
+            if let Some(archs) = architectures { body["architectures"] = serde_json::json!(archs); }
             let v = post_json(&format!("{}/repos", base), &body).await?;
             println!("{}", serde_json::to_string_pretty(&v)?);
         }

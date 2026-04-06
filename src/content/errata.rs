@@ -168,12 +168,17 @@ pub fn parse_updateinfo(xml: &str) -> Result<Vec<ParsedErratum>> {
 }
 
 /// Sync errata for a single repository by re-fetching updateinfo.xml.
+/// Deb repos have no errata — returns Ok(0) immediately.
 pub async fn sync_errata(db: &Arc<Database<'static>>, repo_id: &str) -> Result<u64> {
     let repo = {
         let r = db.r_transaction()?;
         r.get().primary::<Repository>(repo_id.to_string())?
             .ok_or_else(|| anyhow::anyhow!("repository not found: {}", repo_id))?
     };
+
+    if repo.content_type == "deb" {
+        return Ok(0);
+    }
 
     let client = reqwest::Client::builder()
         .danger_accept_invalid_certs(true)
@@ -272,7 +277,7 @@ pub async fn sync_all_errata(db: &Arc<Database<'static>>) -> Result<u64> {
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| anyhow::anyhow!("{}", e))?;
         all.into_iter()
-            .filter(|r| r.sync_state == RepoSyncState::Synced)
+            .filter(|r| r.sync_state == RepoSyncState::Synced && r.content_type != "deb")
             .collect::<Vec<_>>()
     };
 

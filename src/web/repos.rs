@@ -14,7 +14,17 @@ pub struct CreateRepoForm {
     pub product_id: String,
     pub name: String,
     pub url: String,
+    #[serde(default = "default_content_type")]
+    pub content_type: String,
+    #[serde(default)]
+    pub codename: Option<String>,
+    #[serde(default)]
+    pub components: Option<String>,
+    #[serde(default)]
+    pub architectures: Option<String>,
 }
+
+fn default_content_type() -> String { "yum".to_string() }
 
 pub async fn page(State(state): State<WebState>) -> Html<String> {
     let r = state.db.r_transaction().unwrap();
@@ -49,9 +59,15 @@ pub async fn page(State(state): State<WebState>) -> Html<String> {
         } else {
             repo.url.clone()
         };
+        let type_badge = if repo.content_type == "deb" {
+            r#"<span class="badge badge-cyan">deb</span>"#
+        } else {
+            r#"<span class="badge badge-purple">yum</span>"#
+        };
         rows.push_str(&format!(
             r#"<tr>
                 <td>{name}</td>
+                <td>{type_badge}</td>
                 <td class="url-cell" title="{url}">{url_display}</td>
                 <td>{state_badge}</td>
                 <td>{pkgs}</td>
@@ -66,6 +82,7 @@ pub async fn page(State(state): State<WebState>) -> Html<String> {
                 </td>
             </tr>"#,
             id = repo.id, name = repo.name,
+            type_badge = type_badge,
             url = repo.url, url_display = url_display,
             pkgs = repo.package_count,
             errata = repo.errata_count,
@@ -91,6 +108,13 @@ pub async fn page(State(state): State<WebState>) -> Html<String> {
                         <select name="product_id" required>{product_options}</select>
                     </div>
                     <div class="form-group">
+                        <label>Type</label>
+                        <select name="content_type" onchange="document.getElementById('deb-fields').style.display=this.value==='deb'?'flex':'none'">
+                            <option value="yum">YUM (RPM)</option>
+                            <option value="deb">APT (Deb)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
                         <label>Name</label>
                         <input name="name" placeholder="e.g. CentOS Base" required>
                     </div>
@@ -103,6 +127,20 @@ pub async fn page(State(state): State<WebState>) -> Html<String> {
                         <button type="submit">Create</button>
                     </div>
                 </div>
+                <div id="deb-fields" class="form-row" style="display:none">
+                    <div class="form-group">
+                        <label>Codename</label>
+                        <input name="codename" placeholder="e.g. jammy, bookworm">
+                    </div>
+                    <div class="form-group">
+                        <label>Components</label>
+                        <input name="components" placeholder="e.g. main,restricted,universe">
+                    </div>
+                    <div class="form-group">
+                        <label>Architectures</label>
+                        <input name="architectures" placeholder="e.g. amd64,arm64">
+                    </div>
+                </div>
             </form>
         </div>
     </details>
@@ -113,6 +151,7 @@ pub async fn page(State(state): State<WebState>) -> Html<String> {
         <thead>
             <tr>
                 <th>Name</th>
+                <th>Type</th>
                 <th>URL</th>
                 <th>Status</th>
                 <th>Packages</th>
@@ -133,7 +172,18 @@ pub async fn create(
     State(state): State<WebState>,
     Form(body): Form<CreateRepoForm>,
 ) -> StatusCode {
-    let repo = Repository::new(&body.product_id, &body.name, &body.url);
+    let repo = if body.content_type == "deb" {
+        Repository::new_deb(
+            &body.product_id,
+            &body.name,
+            &body.url,
+            body.codename.as_deref().unwrap_or("stable"),
+            body.components.as_deref().unwrap_or("main"),
+            body.architectures.as_deref().unwrap_or("amd64"),
+        )
+    } else {
+        Repository::new(&body.product_id, &body.name, &body.url)
+    };
     let rw = match state.db.rw_transaction() {
         Ok(rw) => rw,
         Err(_) => return StatusCode::INTERNAL_SERVER_ERROR,
