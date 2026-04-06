@@ -27,6 +27,31 @@ pub struct CreateRepoForm {
 fn default_content_type() -> String { "yum".to_string() }
 
 pub async fn page(State(state): State<WebState>) -> Html<String> {
+    // Auto-create a default product and org if none exist
+    {
+        let r = state.db.r_transaction().unwrap();
+        let products: Vec<Product> = r.scan().primary()
+            .unwrap().all().unwrap()
+            .collect::<Result<Vec<_>, _>>().unwrap_or_default();
+        if products.is_empty() {
+            drop(r);
+            let rw = state.db.rw_transaction().unwrap();
+            let orgs: Vec<Organization> = rw.scan().primary()
+                .unwrap().all().unwrap()
+                .collect::<Result<Vec<_>, _>>().unwrap_or_default();
+            let org_id = if let Some(org) = orgs.first() {
+                org.id.clone()
+            } else {
+                let org = Organization::new("Default", "default");
+                let id = org.id.clone();
+                let _ = rw.insert(org);
+                id
+            };
+            let _ = rw.insert(Product::new(&org_id, "Default", "default"));
+            let _ = rw.commit();
+        }
+    }
+
     let r = state.db.r_transaction().unwrap();
 
     let repos: Vec<Repository> = r.scan().primary()
@@ -62,7 +87,7 @@ pub async fn page(State(state): State<WebState>) -> Html<String> {
         let type_badge = if repo.content_type == "deb" {
             r#"<span class="badge badge-cyan">deb</span>"#
         } else {
-            r#"<span class="badge badge-purple">yum</span>"#
+            r#"<span class="badge badge-dim">yum</span>"#
         };
         rows.push_str(&format!(
             r#"<tr>

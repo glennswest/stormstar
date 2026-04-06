@@ -6,7 +6,7 @@ name = "stormstar"
 log_dir = "/var/stormd/logs"
 
 [api]
-bind = "0.0.0.0:9080"
+bind = "0.0.0.0:80"
 
 [ssh]
 enabled = true
