@@ -7,6 +7,9 @@ COPY target/aarch64-unknown-linux-musl/release/stormstar /stormstar
 # stormd supervisor config
 COPY deploy/stormd.toml /etc/stormd/config.toml
 
+# stormstar application config
+COPY deploy/stormstar.toml /etc/stormstar/stormstar.toml
+
 VOLUME /data
 EXPOSE 8585 80 22
 

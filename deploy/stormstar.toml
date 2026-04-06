@@ -1,0 +1,3 @@
+# StormStar application config (inside container)
+listen = "0.0.0.0:80"
+data_dir = "/data/stormstar"

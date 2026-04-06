@@ -19,14 +19,14 @@ spec:
       startupProbe:
         httpGet:
           path: /api/v1/health
-          port: 8585
+          port: 80
         initialDelaySeconds: 5
         periodSeconds: 3
         failureThreshold: 10
       livenessProbe:
         httpGet:
           path: /api/v1/health
-          port: 8585
+          port: 80
         periodSeconds: 30
         failureThreshold: 3
       volumeMounts:

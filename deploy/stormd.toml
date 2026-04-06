@@ -6,7 +6,7 @@ name = "stormstar"
 log_dir = "/var/stormd/logs"
 
 [api]
-bind = "0.0.0.0:80"
+bind = "0.0.0.0:9080"
 
 [ssh]
 enabled = true
@@ -22,7 +22,7 @@ scrollback = 10000
 [[process]]
 name = "stormstar"
 command = "/stormstar"
-args = ["serve"]
+args = ["--config", "/etc/stormstar/stormstar.toml", "serve"]
 working_dir = "/"
 on_failure = "restart"
 restart_delay_secs = 5
@@ -31,11 +31,11 @@ restart_window_secs = 3600
 
 [process.liveness]
 type = "http"
-url = "http://localhost:8585/api/v1/health"
+url = "http://localhost:80/api/v1/health"
 interval_secs = 10
 failure_threshold = 3
 initial_delay_secs = 5
 
 [process.ui]
 label = "StormStar"
-proxy = "http://127.0.0.1:8585/"
+proxy = "http://127.0.0.1:80/"
