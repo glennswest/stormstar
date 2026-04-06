@@ -6,7 +6,7 @@ metadata:
   namespace: infra
   annotations:
     vkube.io/network: gt
-    vkube.io/image-policy: auto
+    vkube.io/image-policy: always
 spec:
   restartPolicy: Always
   volumes:
