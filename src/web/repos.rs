@@ -262,7 +262,7 @@ pub async fn page(State(state): State<WebState>) -> Html<String> {
     <h1>Repositories</h1>
     <div class="actions">
         <details class="create-form">
-            <summary><button>+ From Catalog</button></summary>
+            <summary>+ From Catalog</summary>
             <div class="card">
                 <form id="catalog-form" hx-post="/ui/repos/create-batch" hx-swap="none"
                       hx-on::after-request="if(event.detail.successful) location.reload()">
@@ -294,7 +294,7 @@ pub async fn page(State(state): State<WebState>) -> Html<String> {
             </div>
         </details>
         <details class="create-form">
-            <summary><button>+ Custom</button></summary>
+            <summary>+ Custom</summary>
             <div class="card">
                 <form hx-post="/ui/repos/create" hx-swap="none"
                       hx-on::after-request="if(event.detail.successful) location.reload()">

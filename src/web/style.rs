@@ -176,7 +176,17 @@ details.create-form {
 details.create-form summary {
     list-style: none;
     cursor: pointer;
+    display: inline-block;
+    background: var(--purple);
+    color: var(--bg);
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-weight: bold;
 }
+
+details.create-form summary:hover { background: var(--pink); }
 
 details.create-form summary::-webkit-details-marker { display: none; }
 

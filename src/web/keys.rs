@@ -89,7 +89,7 @@ pub async fn page(State(state): State<WebState>) -> Html<String> {
         r#"<div class="toolbar">
     <h1>Activation Keys</h1>
     <details class="create-form">
-        <summary><button>+ New Key</button></summary>
+        <summary>+ New Key</summary>
         <div class="card">
             <form hx-post="/ui/keys/create" hx-swap="none"
                   hx-on::after-request="if(event.detail.successful) location.reload()">
