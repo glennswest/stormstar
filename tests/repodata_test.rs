@@ -120,6 +120,9 @@ fn test_generate_repomd() {
             sha256: "aabbccdd".to_string(),
             size: 1884567,
             location_href: "Packages/b/bash-5.1.8-6.el9.x86_64.rpm".to_string(),
+            downloaded: false,
+            local_path: String::new(),
+            download_size: 0,
             created_at: "2026-01-01T00:00:00Z".to_string(),
         },
     ];
@@ -146,6 +149,9 @@ fn test_generate_primary() {
             sha256: "aabbccdd".to_string(),
             size: 1884567,
             location_href: "Packages/b/bash-5.1.8-6.el9.x86_64.rpm".to_string(),
+            downloaded: false,
+            local_path: String::new(),
+            download_size: 0,
             created_at: "2026-01-01T00:00:00Z".to_string(),
         },
     ];
@@ -174,6 +180,9 @@ fn test_roundtrip_primary() {
             sha256: "1234abcd".to_string(),
             size: 5500000,
             location_href: "Packages/c/coreutils-8.32-33.el9.x86_64.rpm".to_string(),
+            downloaded: false,
+            local_path: String::new(),
+            download_size: 0,
             created_at: "2026-01-01T00:00:00Z".to_string(),
         },
     ];

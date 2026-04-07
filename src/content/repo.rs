@@ -6,13 +6,15 @@ use anyhow::{Context, Result};
 use native_db::Database;
 use uuid::Uuid;
 
+use crate::config::Config;
 use crate::db::models::*;
 use super::repodata;
 use super::errata as errata_parser;
 use super::deb;
+use super::download::{self, ProgressMap};
 
 /// Build an HTTP client with optional SSL client cert auth (for RHEL CDN).
-fn build_client(repo: &Repository) -> Result<reqwest::Client> {
+pub(crate) fn build_client(repo: &Repository) -> Result<reqwest::Client> {
     let mut builder = reqwest::Client::builder()
         .danger_accept_invalid_certs(true);
 
@@ -27,7 +29,7 @@ fn build_client(repo: &Repository) -> Result<reqwest::Client> {
 }
 
 /// Apply HTTP Basic Auth if repo has username/password.
-fn apply_auth(req: reqwest::RequestBuilder, repo: &Repository) -> reqwest::RequestBuilder {
+pub(crate) fn apply_auth(req: reqwest::RequestBuilder, repo: &Repository) -> reqwest::RequestBuilder {
     if let (Some(user), Some(pass)) = (&repo.username, &repo.password) {
         req.basic_auth(user, Some(pass))
     } else {
@@ -35,8 +37,13 @@ fn apply_auth(req: reqwest::RequestBuilder, repo: &Repository) -> reqwest::Reque
     }
 }
 
-/// Sync a repository: fetch metadata, parse packages and errata, store in DB.
-pub async fn sync_repo(db: &Arc<Database<'static>>, repo_id: &str) -> Result<()> {
+/// Sync a repository: fetch metadata, parse packages and errata, store in DB, then download packages.
+pub async fn sync_repo(
+    db: &Arc<Database<'static>>,
+    repo_id: &str,
+    config: &Arc<Config>,
+    progress: &ProgressMap,
+) -> Result<()> {
     // Load repo from DB
     let repo = {
         let r = db.r_transaction()?;
@@ -85,21 +92,92 @@ pub async fn sync_repo(db: &Arc<Database<'static>>, repo_id: &str) -> Result<()>
 
     match &result {
         Ok((pkg_count, errata_count)) => {
-            updated.sync_state = RepoSyncState::Synced;
+            // Compute total_size_bytes from package metadata
+            let total_size: u64 = {
+                let r2 = db.r_transaction()?;
+                let all_pkgs: Vec<Package> = r2.scan().primary()
+                    .map_err(|e| anyhow::anyhow!("{}", e))?
+                    .all()
+                    .map_err(|e| anyhow::anyhow!("{}", e))?
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(|e| anyhow::anyhow!("{}", e))?;
+                all_pkgs.iter().filter(|p| p.repo_id == repo.id).map(|p| p.size).sum()
+            };
+
             updated.package_count = *pkg_count;
             updated.errata_count = *errata_count;
+            updated.total_size_bytes = total_size;
             updated.last_sync = Some(chrono::Utc::now().to_rfc3339());
-            tracing::info!("Sync complete: {} packages, {} errata", pkg_count, errata_count);
+
+            // Update repo before download phase so total_size is visible
+            rw.update(old, updated.clone())?;
+            rw.commit()?;
+
+            // Initialize progress for metadata phase
+            {
+                let mut map = progress.lock().await;
+                let entry = map.entry(repo.id.clone()).or_insert_with(download::SyncProgress::new);
+                entry.phase = "metadata_complete".to_string();
+                entry.total_packages = *pkg_count;
+                entry.total_size_bytes = total_size;
+            }
+
+            // Download packages to disk
+            tracing::info!("Starting package downloads: {} packages, {} total size",
+                pkg_count, download::format_bytes(total_size));
+
+            let (dl, sk, fl, bytes) = download::download_all_packages(
+                db, &updated, config, progress,
+            ).await?;
+
+            // Update repo with download stats
+            let rw2 = db.rw_transaction()?;
+            let old2 = rw2.get().primary::<Repository>(repo_id.to_string())?
+                .ok_or_else(|| anyhow::anyhow!("repository not found"))?;
+            let mut final_repo = old2.clone();
+            final_repo.sync_state = RepoSyncState::Synced;
+            final_repo.downloaded_size_bytes = bytes + {
+                // Add previously downloaded bytes from skipped packages
+                let r3 = db.r_transaction()?;
+                let all: Vec<Package> = r3.scan().primary()
+                    .map_err(|e| anyhow::anyhow!("{}", e))?
+                    .all()
+                    .map_err(|e| anyhow::anyhow!("{}", e))?
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(|e| anyhow::anyhow!("{}", e))?;
+                all.iter()
+                    .filter(|p| p.repo_id == repo.id && p.downloaded)
+                    .map(|p| p.download_size)
+                    .sum::<u64>()
+            };
+            final_repo.downloaded_package_count = dl + sk;
+            rw2.update(old2, final_repo)?;
+
+            tracing::info!("Sync complete: {} packages, {} errata, {} downloaded, {} skipped, {} failed",
+                pkg_count, errata_count, dl, sk, fl);
 
             // Update sync log to success
-            if let Ok(Some(old_log)) = rw.get().primary::<SyncLog>(log_id.clone()) {
+            if let Ok(Some(old_log)) = rw2.get().primary::<SyncLog>(log_id.clone()) {
                 let mut log = old_log.clone();
                 log.status = "success".to_string();
-                log.message = format!("{} packages, {} errata", pkg_count, errata_count);
+                log.message = format!("{} packages, {} errata, {} downloaded, {} skipped",
+                    pkg_count, errata_count, dl, sk);
                 log.packages_synced = *pkg_count;
                 log.errata_synced = *errata_count;
+                log.packages_downloaded = dl;
+                log.packages_skipped = sk;
+                log.bytes_downloaded = bytes;
+                log.total_size_bytes = total_size;
                 log.finished_at = Some(chrono::Utc::now().to_rfc3339());
-                let _ = rw.update(old_log, log);
+                let _ = rw2.update(old_log, log);
+            }
+
+            rw2.commit()?;
+
+            // Clean up progress entry
+            {
+                let mut map = progress.lock().await;
+                map.remove(&repo.id);
             }
         }
         Err(e) => {
@@ -114,11 +192,17 @@ pub async fn sync_repo(db: &Arc<Database<'static>>, repo_id: &str) -> Result<()>
                 log.finished_at = Some(chrono::Utc::now().to_rfc3339());
                 let _ = rw.update(old_log, log);
             }
+
+            rw.update(old, updated)?;
+            rw.commit()?;
+
+            // Clean up progress entry
+            {
+                let mut map = progress.lock().await;
+                map.remove(&repo.id);
+            }
         }
     }
-
-    rw.update(old, updated)?;
-    rw.commit()?;
 
     result.map(|_| ())
 }
@@ -183,6 +267,9 @@ async fn do_sync_yum(db: &Arc<Database<'static>>, repo: &Repository) -> Result<(
             sha256: pp.sha256.clone(),
             size: pp.size,
             location_href: pp.location_href.clone(),
+            downloaded: false,
+            local_path: String::new(),
+            download_size: 0,
             created_at: chrono::Utc::now().to_rfc3339(),
         };
         rw.insert(pkg).map_err(|e| anyhow::anyhow!("{}", e))?;
@@ -340,6 +427,9 @@ async fn do_sync_deb(db: &Arc<Database<'static>>, repo: &Repository) -> Result<(
             sha256: dp.sha256.clone(),
             size: dp.size,
             location_href: dp.filename.clone(),
+            downloaded: false,
+            local_path: String::new(),
+            download_size: 0,
             created_at: chrono::Utc::now().to_rfc3339(),
         };
         rw.insert(pkg).map_err(|e| anyhow::anyhow!("{}", e))?;

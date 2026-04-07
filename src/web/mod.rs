@@ -3,6 +3,7 @@
 pub mod style;
 pub mod dashboard;
 pub mod repos;
+pub mod packages;
 pub mod views;
 pub mod envs;
 pub mod hosts;
@@ -15,11 +16,13 @@ use axum::{Router, routing::{get, post}};
 use native_db::Database;
 
 use crate::config::Config;
+use crate::content::download::ProgressMap;
 
 #[derive(Clone)]
 pub struct WebState {
     pub db: Arc<Database<'static>>,
     pub config: Arc<Config>,
+    pub progress: ProgressMap,
 }
 
 pub fn routes() -> Router<WebState> {
@@ -34,6 +37,7 @@ pub fn routes() -> Router<WebState> {
         .route("/ui/keys", get(keys::page))
         .route("/ui/logs", get(logs::page))
         // Repo actions
+        .route("/ui/repos/{id}/packages", get(packages::page))
         .route("/ui/repos/create", post(repos::create))
         .route("/ui/repos/create-batch", post(repos::create_batch))
         .route("/ui/repos/{id}/toggle", post(repos::toggle))

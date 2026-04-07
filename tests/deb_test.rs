@@ -131,6 +131,9 @@ fn test_generate_packages() {
             sha256: "aabbccdd".to_string(),
             size: 321468,
             location_href: "pool/main/c/curl/curl_7.88.1_amd64.deb".to_string(),
+            downloaded: false,
+            local_path: String::new(),
+            download_size: 0,
             created_at: "2026-01-01T00:00:00Z".to_string(),
         },
     ];
@@ -176,6 +179,9 @@ fn test_roundtrip_packages() {
             sha256: "1234abcd5678ef90".to_string(),
             size: 620000,
             location_href: String::new(),
+            downloaded: false,
+            local_path: String::new(),
+            download_size: 0,
             created_at: "2026-01-01T00:00:00Z".to_string(),
         },
     ];

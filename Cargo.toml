@@ -1,6 +1,6 @@
 [package]
 name = "stormstar"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 authors = ["Glenn West"]
 description = "Lightweight RPM and APT content management for edge deployments"
@@ -72,6 +72,9 @@ cron = "0.13"
 # Metrics
 metrics = "0.24"
 metrics-exporter-prometheus = "0.16"
+
+# Streaming
+tokio-util = { version = "0.7", features = ["io"] }
 
 # Misc
 once_cell = "1"

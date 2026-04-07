@@ -9,6 +9,7 @@ use axum::{
 use serde::Deserialize;
 
 use super::{AppState, AppError};
+use crate::content::download;
 use crate::db::models::{Repository, Package};
 
 pub fn routes() -> Router<AppState> {
@@ -17,6 +18,8 @@ pub fn routes() -> Router<AppState> {
         .route("/repos/{id}", get(show).put(update).delete(delete))
         .route("/repos/{id}/sync", axum::routing::post(sync))
         .route("/repos/{id}/packages", get(packages))
+        .route("/repos/{id}/sync-progress", get(sync_progress))
+        .route("/repos/{id}/size-estimate", get(size_estimate))
 }
 
 #[derive(Deserialize)]
@@ -176,9 +179,11 @@ async fn sync(
 
     // Spawn sync in background
     let db = state.db.clone();
+    let config = state.config.clone();
+    let progress = state.progress.clone();
     let repo_id = id.clone();
     tokio::spawn(async move {
-        if let Err(e) = crate::content::repo::sync_repo(&db, &repo_id).await {
+        if let Err(e) = crate::content::repo::sync_repo(&db, &repo_id, &config, &progress).await {
             tracing::error!("Sync failed for {}: {}", repo_id, e);
         }
     });
@@ -212,4 +217,62 @@ async fn packages(
         .collect();
 
     Ok(Json(repo_pkgs))
+}
+
+async fn sync_progress(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let map = state.progress.lock().await;
+    if let Some(progress) = map.get(&id) {
+        Ok(Json(serde_json::to_value(progress).unwrap()))
+    } else {
+        Ok(Json(serde_json::json!({
+            "phase": "idle",
+            "total_packages": 0,
+            "downloaded": 0,
+            "skipped": 0,
+            "failed": 0,
+            "bytes_downloaded": 0,
+            "total_size_bytes": 0,
+            "current_package": ""
+        })))
+    }
+}
+
+async fn size_estimate(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let r = state.db.r_transaction().map_err(|e| AppError::internal(e.to_string()))?;
+
+    let repo: Repository = r.get().primary(id.clone())
+        .map_err(|e| AppError::internal(e.to_string()))?
+        .ok_or_else(|| AppError::not_found("repository not found"))?;
+
+    let all_pkgs: Vec<Package> = r.scan().primary()
+        .map_err(|e| AppError::internal(e.to_string()))?
+        .all()
+        .map_err(|e| AppError::internal(e.to_string()))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| AppError::internal(e.to_string()))?;
+
+    let repo_pkgs: Vec<&Package> = all_pkgs.iter()
+        .filter(|p| p.repo_id == id)
+        .collect();
+
+    let total_size: u64 = repo_pkgs.iter().map(|p| p.size).sum();
+    let downloaded_count = repo_pkgs.iter().filter(|p| p.downloaded).count() as u64;
+    let downloaded_size: u64 = repo_pkgs.iter().filter(|p| p.downloaded).map(|p| p.download_size).sum();
+
+    Ok(Json(serde_json::json!({
+        "total_packages": repo.package_count,
+        "total_size_bytes": total_size,
+        "total_size_human": download::format_bytes(total_size),
+        "downloaded_count": downloaded_count,
+        "downloaded_size_bytes": downloaded_size,
+        "downloaded_size_human": download::format_bytes(downloaded_size),
+        "remaining_bytes": total_size.saturating_sub(downloaded_size),
+        "remaining_human": download::format_bytes(total_size.saturating_sub(downloaded_size)),
+    })))
 }

@@ -20,14 +20,17 @@ use axum::{
     body::Body,
 };
 use native_db::Database;
+use tokio_util::io::ReaderStream;
 
 use crate::config::Config;
+use crate::content::download::ProgressMap;
 use crate::db::models::*;
 
 #[derive(Clone)]
 pub struct ContentState {
     pub db: Arc<Database<'static>>,
     pub config: Arc<Config>,
+    pub progress: ProgressMap,
 }
 
 pub fn routes() -> Router<ContentState> {
@@ -176,7 +179,28 @@ async fn serve_package(
         .find(|p| p.filename() == path.filename)
         .ok_or_else(|| (StatusCode::NOT_FOUND, "package not found".to_string()))?;
 
-    // Proxy the package from upstream
+    // Try serving from local disk first
+    if pkg.downloaded && !pkg.local_path.is_empty() {
+        let local_file = std::path::PathBuf::from(&state.config.data_dir)
+            .join("repos")
+            .join(&repo.id)
+            .join(&pkg.local_path);
+
+        if let Ok(file) = tokio::fs::File::open(&local_file).await {
+            let meta = file.metadata().await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            let stream = ReaderStream::new(file);
+            let body = Body::from_stream(stream);
+            return Ok(Response::builder()
+                .status(200)
+                .header("Content-Type", "application/x-rpm")
+                .header("Content-Length", meta.len().to_string())
+                .body(body)
+                .unwrap());
+        }
+    }
+
+    // Fallback: proxy from upstream
     let base_url = repo.url.trim_end_matches('/');
     let pkg_url = format!("{}/{}", base_url, pkg.location_href);
 
@@ -360,7 +384,28 @@ async fn serve_deb_pool(
         })
         .ok_or_else(|| (StatusCode::NOT_FOUND, "package not found".to_string()))?;
 
-    // Proxy from upstream
+    // Try serving from local disk first
+    if pkg.downloaded && !pkg.local_path.is_empty() {
+        let local_file = std::path::PathBuf::from(&state.config.data_dir)
+            .join("repos")
+            .join(&repo.id)
+            .join(&pkg.local_path);
+
+        if let Ok(file) = tokio::fs::File::open(&local_file).await {
+            let meta = file.metadata().await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            let stream = ReaderStream::new(file);
+            let body = Body::from_stream(stream);
+            return Ok(Response::builder()
+                .status(200)
+                .header("Content-Type", "application/vnd.debian.binary-package")
+                .header("Content-Length", meta.len().to_string())
+                .body(body)
+                .unwrap());
+        }
+    }
+
+    // Fallback: proxy from upstream
     let base_url = repo.url.trim_end_matches('/');
     let pkg_url = format!("{}/{}", base_url, pkg.location_href);
 

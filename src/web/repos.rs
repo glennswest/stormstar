@@ -7,6 +7,7 @@ use serde::Deserialize;
 
 use super::WebState;
 use super::style;
+use crate::content::download;
 use crate::db::models::*;
 use crate::web::relative_time;
 
@@ -21,59 +22,63 @@ struct KnownRepo {
     components: Option<&'static str>,
     architectures: Option<&'static str>,
     needs_auth: bool,
+    available_components: Option<&'static str>,
+    default_components: Option<&'static str>,
+    available_architectures: Option<&'static str>,
+    default_architectures: Option<&'static str>,
 }
 
 const KNOWN_REPOS: &[KnownRepo] = &[
     // CentOS 7
-    KnownRepo { distro: "CentOS 7", name: "CentOS 7 - OS", url: "https://vault.centos.org/centos/7/os/x86_64/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false },
-    KnownRepo { distro: "CentOS 7", name: "CentOS 7 - Updates", url: "https://vault.centos.org/centos/7/updates/x86_64/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false },
-    KnownRepo { distro: "CentOS 7", name: "CentOS 7 - Extras", url: "https://vault.centos.org/centos/7/extras/x86_64/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false },
-    KnownRepo { distro: "CentOS 7", name: "CentOS 7 - SCL", url: "https://vault.centos.org/centos/7/sclo/x86_64/sclo/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false },
+    KnownRepo { distro: "CentOS 7", name: "CentOS 7 - OS", url: "https://vault.centos.org/centos/7/os/x86_64/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false, available_components: None, default_components: None, available_architectures: None, default_architectures: None },
+    KnownRepo { distro: "CentOS 7", name: "CentOS 7 - Updates", url: "https://vault.centos.org/centos/7/updates/x86_64/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false, available_components: None, default_components: None, available_architectures: None, default_architectures: None },
+    KnownRepo { distro: "CentOS 7", name: "CentOS 7 - Extras", url: "https://vault.centos.org/centos/7/extras/x86_64/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false, available_components: None, default_components: None, available_architectures: None, default_architectures: None },
+    KnownRepo { distro: "CentOS 7", name: "CentOS 7 - SCL", url: "https://vault.centos.org/centos/7/sclo/x86_64/sclo/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false, available_components: None, default_components: None, available_architectures: None, default_architectures: None },
     // Rocky 8
-    KnownRepo { distro: "Rocky 8", name: "Rocky 8 - BaseOS", url: "https://dl.rockylinux.org/pub/rocky/8/BaseOS/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false },
-    KnownRepo { distro: "Rocky 8", name: "Rocky 8 - AppStream", url: "https://dl.rockylinux.org/pub/rocky/8/AppStream/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false },
-    KnownRepo { distro: "Rocky 8", name: "Rocky 8 - PowerTools", url: "https://dl.rockylinux.org/pub/rocky/8/PowerTools/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false },
-    KnownRepo { distro: "Rocky 8", name: "Rocky 8 - Extras", url: "https://dl.rockylinux.org/pub/rocky/8/extras/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false },
+    KnownRepo { distro: "Rocky 8", name: "Rocky 8 - BaseOS", url: "https://dl.rockylinux.org/pub/rocky/8/BaseOS/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false, available_components: None, default_components: None, available_architectures: None, default_architectures: None },
+    KnownRepo { distro: "Rocky 8", name: "Rocky 8 - AppStream", url: "https://dl.rockylinux.org/pub/rocky/8/AppStream/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false, available_components: None, default_components: None, available_architectures: None, default_architectures: None },
+    KnownRepo { distro: "Rocky 8", name: "Rocky 8 - PowerTools", url: "https://dl.rockylinux.org/pub/rocky/8/PowerTools/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false, available_components: None, default_components: None, available_architectures: None, default_architectures: None },
+    KnownRepo { distro: "Rocky 8", name: "Rocky 8 - Extras", url: "https://dl.rockylinux.org/pub/rocky/8/extras/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false, available_components: None, default_components: None, available_architectures: None, default_architectures: None },
     // Rocky 9
-    KnownRepo { distro: "Rocky 9", name: "Rocky 9 - BaseOS", url: "https://dl.rockylinux.org/pub/rocky/9/BaseOS/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false },
-    KnownRepo { distro: "Rocky 9", name: "Rocky 9 - AppStream", url: "https://dl.rockylinux.org/pub/rocky/9/AppStream/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false },
-    KnownRepo { distro: "Rocky 9", name: "Rocky 9 - CRB", url: "https://dl.rockylinux.org/pub/rocky/9/CRB/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false },
-    KnownRepo { distro: "Rocky 9", name: "Rocky 9 - Extras", url: "https://dl.rockylinux.org/pub/rocky/9/extras/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false },
-    KnownRepo { distro: "Rocky 9", name: "Rocky 9 - Devel", url: "https://dl.rockylinux.org/pub/rocky/9/devel/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false },
+    KnownRepo { distro: "Rocky 9", name: "Rocky 9 - BaseOS", url: "https://dl.rockylinux.org/pub/rocky/9/BaseOS/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false, available_components: None, default_components: None, available_architectures: None, default_architectures: None },
+    KnownRepo { distro: "Rocky 9", name: "Rocky 9 - AppStream", url: "https://dl.rockylinux.org/pub/rocky/9/AppStream/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false, available_components: None, default_components: None, available_architectures: None, default_architectures: None },
+    KnownRepo { distro: "Rocky 9", name: "Rocky 9 - CRB", url: "https://dl.rockylinux.org/pub/rocky/9/CRB/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false, available_components: None, default_components: None, available_architectures: None, default_architectures: None },
+    KnownRepo { distro: "Rocky 9", name: "Rocky 9 - Extras", url: "https://dl.rockylinux.org/pub/rocky/9/extras/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false, available_components: None, default_components: None, available_architectures: None, default_architectures: None },
+    KnownRepo { distro: "Rocky 9", name: "Rocky 9 - Devel", url: "https://dl.rockylinux.org/pub/rocky/9/devel/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false, available_components: None, default_components: None, available_architectures: None, default_architectures: None },
     // AlmaLinux 8
-    KnownRepo { distro: "AlmaLinux 8", name: "AlmaLinux 8 - BaseOS", url: "https://repo.almalinux.org/almalinux/8/BaseOS/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false },
-    KnownRepo { distro: "AlmaLinux 8", name: "AlmaLinux 8 - AppStream", url: "https://repo.almalinux.org/almalinux/8/AppStream/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false },
-    KnownRepo { distro: "AlmaLinux 8", name: "AlmaLinux 8 - PowerTools", url: "https://repo.almalinux.org/almalinux/8/PowerTools/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false },
-    KnownRepo { distro: "AlmaLinux 8", name: "AlmaLinux 8 - Extras", url: "https://repo.almalinux.org/almalinux/8/extras/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false },
+    KnownRepo { distro: "AlmaLinux 8", name: "AlmaLinux 8 - BaseOS", url: "https://repo.almalinux.org/almalinux/8/BaseOS/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false, available_components: None, default_components: None, available_architectures: None, default_architectures: None },
+    KnownRepo { distro: "AlmaLinux 8", name: "AlmaLinux 8 - AppStream", url: "https://repo.almalinux.org/almalinux/8/AppStream/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false, available_components: None, default_components: None, available_architectures: None, default_architectures: None },
+    KnownRepo { distro: "AlmaLinux 8", name: "AlmaLinux 8 - PowerTools", url: "https://repo.almalinux.org/almalinux/8/PowerTools/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false, available_components: None, default_components: None, available_architectures: None, default_architectures: None },
+    KnownRepo { distro: "AlmaLinux 8", name: "AlmaLinux 8 - Extras", url: "https://repo.almalinux.org/almalinux/8/extras/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false, available_components: None, default_components: None, available_architectures: None, default_architectures: None },
     // AlmaLinux 9
-    KnownRepo { distro: "AlmaLinux 9", name: "AlmaLinux 9 - BaseOS", url: "https://repo.almalinux.org/almalinux/9/BaseOS/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false },
-    KnownRepo { distro: "AlmaLinux 9", name: "AlmaLinux 9 - AppStream", url: "https://repo.almalinux.org/almalinux/9/AppStream/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false },
-    KnownRepo { distro: "AlmaLinux 9", name: "AlmaLinux 9 - CRB", url: "https://repo.almalinux.org/almalinux/9/CRB/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false },
-    KnownRepo { distro: "AlmaLinux 9", name: "AlmaLinux 9 - Extras", url: "https://repo.almalinux.org/almalinux/9/extras/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false },
+    KnownRepo { distro: "AlmaLinux 9", name: "AlmaLinux 9 - BaseOS", url: "https://repo.almalinux.org/almalinux/9/BaseOS/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false, available_components: None, default_components: None, available_architectures: None, default_architectures: None },
+    KnownRepo { distro: "AlmaLinux 9", name: "AlmaLinux 9 - AppStream", url: "https://repo.almalinux.org/almalinux/9/AppStream/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false, available_components: None, default_components: None, available_architectures: None, default_architectures: None },
+    KnownRepo { distro: "AlmaLinux 9", name: "AlmaLinux 9 - CRB", url: "https://repo.almalinux.org/almalinux/9/CRB/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false, available_components: None, default_components: None, available_architectures: None, default_architectures: None },
+    KnownRepo { distro: "AlmaLinux 9", name: "AlmaLinux 9 - Extras", url: "https://repo.almalinux.org/almalinux/9/extras/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false, available_components: None, default_components: None, available_architectures: None, default_architectures: None },
     // RHEL 7
-    KnownRepo { distro: "RHEL 7", name: "RHEL 7 - Server", url: "https://cdn.redhat.com/content/dist/rhel/server/7/7Server/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: true },
-    KnownRepo { distro: "RHEL 7", name: "RHEL 7 - Optional", url: "https://cdn.redhat.com/content/dist/rhel/server/7/7Server/x86_64/optional/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: true },
-    KnownRepo { distro: "RHEL 7", name: "RHEL 7 - Extras", url: "https://cdn.redhat.com/content/dist/rhel/server/7/7Server/x86_64/extras/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: true },
+    KnownRepo { distro: "RHEL 7", name: "RHEL 7 - Server", url: "https://cdn.redhat.com/content/dist/rhel/server/7/7Server/x86_64/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: true, available_components: None, default_components: None, available_architectures: None, default_architectures: None },
+    KnownRepo { distro: "RHEL 7", name: "RHEL 7 - Optional", url: "https://cdn.redhat.com/content/dist/rhel/server/7/7Server/x86_64/optional/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: true, available_components: None, default_components: None, available_architectures: None, default_architectures: None },
+    KnownRepo { distro: "RHEL 7", name: "RHEL 7 - Extras", url: "https://cdn.redhat.com/content/dist/rhel/server/7/7Server/x86_64/extras/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: true, available_components: None, default_components: None, available_architectures: None, default_architectures: None },
     // RHEL 8
-    KnownRepo { distro: "RHEL 8", name: "RHEL 8 - BaseOS", url: "https://cdn.redhat.com/content/dist/rhel8/8/x86_64/baseos/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: true },
-    KnownRepo { distro: "RHEL 8", name: "RHEL 8 - AppStream", url: "https://cdn.redhat.com/content/dist/rhel8/8/x86_64/appstream/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: true },
-    KnownRepo { distro: "RHEL 8", name: "RHEL 8 - CRB", url: "https://cdn.redhat.com/content/dist/rhel8/8/x86_64/codeready-builder/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: true },
+    KnownRepo { distro: "RHEL 8", name: "RHEL 8 - BaseOS", url: "https://cdn.redhat.com/content/dist/rhel8/8/x86_64/baseos/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: true, available_components: None, default_components: None, available_architectures: None, default_architectures: None },
+    KnownRepo { distro: "RHEL 8", name: "RHEL 8 - AppStream", url: "https://cdn.redhat.com/content/dist/rhel8/8/x86_64/appstream/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: true, available_components: None, default_components: None, available_architectures: None, default_architectures: None },
+    KnownRepo { distro: "RHEL 8", name: "RHEL 8 - CRB", url: "https://cdn.redhat.com/content/dist/rhel8/8/x86_64/codeready-builder/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: true, available_components: None, default_components: None, available_architectures: None, default_architectures: None },
     // RHEL 9
-    KnownRepo { distro: "RHEL 9", name: "RHEL 9 - BaseOS", url: "https://cdn.redhat.com/content/dist/rhel9/9/x86_64/baseos/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: true },
-    KnownRepo { distro: "RHEL 9", name: "RHEL 9 - AppStream", url: "https://cdn.redhat.com/content/dist/rhel9/9/x86_64/appstream/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: true },
-    KnownRepo { distro: "RHEL 9", name: "RHEL 9 - CRB", url: "https://cdn.redhat.com/content/dist/rhel9/9/x86_64/codeready-builder/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: true },
+    KnownRepo { distro: "RHEL 9", name: "RHEL 9 - BaseOS", url: "https://cdn.redhat.com/content/dist/rhel9/9/x86_64/baseos/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: true, available_components: None, default_components: None, available_architectures: None, default_architectures: None },
+    KnownRepo { distro: "RHEL 9", name: "RHEL 9 - AppStream", url: "https://cdn.redhat.com/content/dist/rhel9/9/x86_64/appstream/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: true, available_components: None, default_components: None, available_architectures: None, default_architectures: None },
+    KnownRepo { distro: "RHEL 9", name: "RHEL 9 - CRB", url: "https://cdn.redhat.com/content/dist/rhel9/9/x86_64/codeready-builder/os/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: true, available_components: None, default_components: None, available_architectures: None, default_architectures: None },
     // EPEL
-    KnownRepo { distro: "EPEL", name: "EPEL 7", url: "https://dl.fedoraproject.org/pub/epel/7/x86_64/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false },
-    KnownRepo { distro: "EPEL", name: "EPEL 8", url: "https://dl.fedoraproject.org/pub/epel/8/Everything/x86_64/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false },
-    KnownRepo { distro: "EPEL", name: "EPEL 9", url: "https://dl.fedoraproject.org/pub/epel/9/Everything/x86_64/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false },
-    // Debian Bookworm
-    KnownRepo { distro: "Debian Bookworm", name: "Debian Bookworm", url: "https://deb.debian.org/debian/", content_type: "deb", codename: Some("bookworm"), components: Some("main,contrib,non-free,non-free-firmware"), architectures: Some("amd64"), needs_auth: false },
-    KnownRepo { distro: "Debian Bookworm", name: "Debian Bookworm Security", url: "https://deb.debian.org/debian-security/", content_type: "deb", codename: Some("bookworm-security"), components: Some("main,contrib,non-free,non-free-firmware"), architectures: Some("amd64"), needs_auth: false },
-    KnownRepo { distro: "Debian Bookworm", name: "Debian Bookworm Updates", url: "https://deb.debian.org/debian/", content_type: "deb", codename: Some("bookworm-updates"), components: Some("main,contrib,non-free,non-free-firmware"), architectures: Some("amd64"), needs_auth: false },
-    // Ubuntu Noble (24.04)
-    KnownRepo { distro: "Ubuntu Noble", name: "Ubuntu Noble", url: "https://archive.ubuntu.com/ubuntu/", content_type: "deb", codename: Some("noble"), components: Some("main,restricted,universe,multiverse"), architectures: Some("amd64"), needs_auth: false },
-    KnownRepo { distro: "Ubuntu Noble", name: "Ubuntu Noble Security", url: "https://security.ubuntu.com/ubuntu/", content_type: "deb", codename: Some("noble-security"), components: Some("main,restricted,universe,multiverse"), architectures: Some("amd64"), needs_auth: false },
-    KnownRepo { distro: "Ubuntu Noble", name: "Ubuntu Noble Updates", url: "https://archive.ubuntu.com/ubuntu/", content_type: "deb", codename: Some("noble-updates"), components: Some("main,restricted,universe,multiverse"), architectures: Some("amd64"), needs_auth: false },
+    KnownRepo { distro: "EPEL", name: "EPEL 7", url: "https://dl.fedoraproject.org/pub/epel/7/x86_64/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false, available_components: None, default_components: None, available_architectures: None, default_architectures: None },
+    KnownRepo { distro: "EPEL", name: "EPEL 8", url: "https://dl.fedoraproject.org/pub/epel/8/Everything/x86_64/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false, available_components: None, default_components: None, available_architectures: None, default_architectures: None },
+    KnownRepo { distro: "EPEL", name: "EPEL 9", url: "https://dl.fedoraproject.org/pub/epel/9/Everything/x86_64/", content_type: "yum", codename: None, components: None, architectures: None, needs_auth: false, available_components: None, default_components: None, available_architectures: None, default_architectures: None },
+    // Debian Bookworm — default to main only, amd64 only
+    KnownRepo { distro: "Debian Bookworm", name: "Debian Bookworm", url: "https://deb.debian.org/debian/", content_type: "deb", codename: Some("bookworm"), components: Some("main"), architectures: Some("amd64"), needs_auth: false, available_components: Some("main,contrib,non-free,non-free-firmware"), default_components: Some("main"), available_architectures: Some("amd64,arm64,i386"), default_architectures: Some("amd64") },
+    KnownRepo { distro: "Debian Bookworm", name: "Debian Bookworm Security", url: "https://deb.debian.org/debian-security/", content_type: "deb", codename: Some("bookworm-security"), components: Some("main"), architectures: Some("amd64"), needs_auth: false, available_components: Some("main,contrib,non-free,non-free-firmware"), default_components: Some("main"), available_architectures: Some("amd64,arm64,i386"), default_architectures: Some("amd64") },
+    KnownRepo { distro: "Debian Bookworm", name: "Debian Bookworm Updates", url: "https://deb.debian.org/debian/", content_type: "deb", codename: Some("bookworm-updates"), components: Some("main"), architectures: Some("amd64"), needs_auth: false, available_components: Some("main,contrib,non-free,non-free-firmware"), default_components: Some("main"), available_architectures: Some("amd64,arm64,i386"), default_architectures: Some("amd64") },
+    // Ubuntu Noble (24.04) — default to main only, amd64 only
+    KnownRepo { distro: "Ubuntu Noble", name: "Ubuntu Noble", url: "https://archive.ubuntu.com/ubuntu/", content_type: "deb", codename: Some("noble"), components: Some("main"), architectures: Some("amd64"), needs_auth: false, available_components: Some("main,restricted,universe,multiverse"), default_components: Some("main"), available_architectures: Some("amd64,arm64,i386"), default_architectures: Some("amd64") },
+    KnownRepo { distro: "Ubuntu Noble", name: "Ubuntu Noble Security", url: "https://security.ubuntu.com/ubuntu/", content_type: "deb", codename: Some("noble-security"), components: Some("main"), architectures: Some("amd64"), needs_auth: false, available_components: Some("main,restricted,universe,multiverse"), default_components: Some("main"), available_architectures: Some("amd64,arm64,i386"), default_architectures: Some("amd64") },
+    KnownRepo { distro: "Ubuntu Noble", name: "Ubuntu Noble Updates", url: "https://archive.ubuntu.com/ubuntu/", content_type: "deb", codename: Some("noble-updates"), components: Some("main"), architectures: Some("amd64"), needs_auth: false, available_components: Some("main,restricted,universe,multiverse"), default_components: Some("main"), available_architectures: Some("amd64,arm64,i386"), default_architectures: Some("amd64") },
 ];
 
 /// Get unique distro names for the dropdown.
@@ -124,6 +129,10 @@ pub struct BatchCreateForm {
     pub ssl_client_cert: Option<String>,
     #[serde(default)]
     pub ssl_client_key: Option<String>,
+    #[serde(default)]
+    pub components_override: Option<String>,
+    #[serde(default)]
+    pub architectures_override: Option<String>,
 }
 
 // ── Page ────────────────────────────────────────────────────────────
@@ -183,9 +192,11 @@ pub async fn page(State(state): State<WebState>) -> Html<String> {
     for (i, kr) in KNOWN_REPOS.iter().enumerate() {
         if i > 0 { catalog_js.push(','); }
         catalog_js.push_str(&format!(
-            r#"{{"idx":{},"distro":"{}","name":"{}","url":"{}","ct":"{}","needs_auth":{},"codename":"{}","components":"{}","architectures":"{}"}}"#,
+            r#"{{"idx":{},"distro":"{}","name":"{}","url":"{}","ct":"{}","needs_auth":{},"codename":"{}","components":"{}","architectures":"{}","avail_comp":"{}","def_comp":"{}","avail_arch":"{}","def_arch":"{}"}}"#,
             i, kr.distro, kr.name, kr.url, kr.content_type, kr.needs_auth,
-            kr.codename.unwrap_or(""), kr.components.unwrap_or(""), kr.architectures.unwrap_or("")
+            kr.codename.unwrap_or(""), kr.components.unwrap_or(""), kr.architectures.unwrap_or(""),
+            kr.available_components.unwrap_or(""), kr.default_components.unwrap_or(""),
+            kr.available_architectures.unwrap_or(""), kr.default_architectures.unwrap_or("")
         ));
     }
     catalog_js.push(']');
@@ -193,10 +204,13 @@ pub async fn page(State(state): State<WebState>) -> Html<String> {
     let mut rows = String::new();
     for repo in &repos {
         let state_badge = match repo.sync_state {
-            RepoSyncState::Synced => r#"<span class="badge badge-green">Synced</span>"#,
-            RepoSyncState::Syncing => r#"<span class="badge badge-yellow">Syncing</span>"#,
-            RepoSyncState::Failed => r#"<span class="badge badge-red">Failed</span>"#,
-            RepoSyncState::NotSynced => r#"<span class="badge badge-dim">Not Synced</span>"#,
+            RepoSyncState::Synced => r#"<span class="badge badge-green">Synced</span>"#.to_string(),
+            RepoSyncState::Syncing => format!(
+                r##"<span class="badge badge-yellow" hx-get="/api/v1/repos/{id}/sync-progress" hx-trigger="every 2s" hx-swap="innerHTML" hx-target="#progress-{id}">Syncing</span> <span id="progress-{id}" style="font-size:0.8rem;color:var(--fg-dim)"></span>"##,
+                id = repo.id
+            ),
+            RepoSyncState::Failed => r#"<span class="badge badge-red">Failed</span>"#.to_string(),
+            RepoSyncState::NotSynced => r#"<span class="badge badge-dim">Not Synced</span>"#.to_string(),
         };
         let enabled_badge = if repo.enabled {
             r#"<span class="badge badge-green">Enabled</span>"#
@@ -221,14 +235,26 @@ pub async fn page(State(state): State<WebState>) -> Html<String> {
         } else {
             ""
         };
+        let size_display = if repo.total_size_bytes > 0 {
+            download::format_bytes(repo.total_size_bytes)
+        } else {
+            "-".to_string()
+        };
+        let dl_display = if repo.package_count > 0 {
+            format!("{}/{}", repo.downloaded_package_count, repo.package_count)
+        } else {
+            "-".to_string()
+        };
         rows.push_str(&format!(
             r#"<tr>
-                <td>{name}{auth_icon}</td>
+                <td><a href="/ui/repos/{id}/packages">{name}</a>{auth_icon}</td>
                 <td>{type_badge}</td>
                 <td class="url-cell" title="{url}">{url_display}</td>
                 <td>{enabled_badge}</td>
                 <td>{state_badge}</td>
                 <td>{pkgs}</td>
+                <td>{size}</td>
+                <td>{dl}</td>
                 <td>{errata}</td>
                 <td>{last}</td>
                 <td>
@@ -246,7 +272,10 @@ pub async fn page(State(state): State<WebState>) -> Html<String> {
             type_badge = type_badge,
             url = repo.url, url_display = url_display,
             enabled_badge = enabled_badge,
+            state_badge = state_badge,
             pkgs = repo.package_count,
+            size = size_display,
+            dl = dl_display,
             errata = repo.errata_count,
             last = last,
             toggle_label = if repo.enabled { "Disable" } else { "Enable" },
@@ -363,6 +392,8 @@ pub async fn page(State(state): State<WebState>) -> Html<String> {
                 <th>Enabled</th>
                 <th>Sync Status</th>
                 <th>Packages</th>
+                <th>Size</th>
+                <th>Downloaded</th>
                 <th>Errata</th>
                 <th>Last Sync</th>
                 <th>Actions</th>
@@ -381,16 +412,41 @@ function updateCatalog() {{
     box.innerHTML = '';
     if (!distro) {{ auth.style.display='none'; submit.style.display='none'; return; }}
     var needs_auth = false;
+    var has_deb = false;
+    var avail_comp = '', def_comp = '', avail_arch = '', def_arch = '';
     var html = '';
     CATALOG.forEach(function(r) {{
         if (r.distro === distro) {{
             if (r.needs_auth) needs_auth = true;
+            if (r.ct === 'deb') {{
+                has_deb = true;
+                avail_comp = r.avail_comp;
+                def_comp = r.def_comp;
+                avail_arch = r.avail_arch;
+                def_arch = r.def_arch;
+            }}
             html += '<label style="display:block;margin:0.3rem 0;cursor:pointer">';
             html += '<input type="checkbox" name="repos" value="' + r.idx + '" checked style="width:auto;margin-right:0.5rem">';
             html += r.name + ' <span style="color:var(--fg-dim);font-size:0.8rem">(' + r.url.substring(0,60) + '...)</span>';
             html += '</label>';
         }}
     }});
+    // Component/arch selectors for deb distros
+    if (has_deb && avail_comp) {{
+        html += '<div style="margin-top:1rem;padding-top:0.75rem;border-top:1px solid var(--bg-light)">';
+        html += '<strong style="color:var(--fg-dim);font-size:0.85rem">Components:</strong><div style="display:flex;gap:1rem;margin:0.3rem 0;flex-wrap:wrap">';
+        avail_comp.split(',').forEach(function(c) {{
+            var checked = def_comp.split(',').indexOf(c) >= 0 ? ' checked' : '';
+            html += '<label style="cursor:pointer"><input type="checkbox" class="comp-cb" value="' + c + '"' + checked + ' style="width:auto;margin-right:0.3rem" onchange="updateCompArch()">' + c + '</label>';
+        }});
+        html += '</div>';
+        html += '<strong style="color:var(--fg-dim);font-size:0.85rem">Architectures:</strong><div style="display:flex;gap:1rem;margin:0.3rem 0;flex-wrap:wrap">';
+        avail_arch.split(',').forEach(function(a) {{
+            var checked = def_arch.split(',').indexOf(a) >= 0 ? ' checked' : '';
+            html += '<label style="cursor:pointer"><input type="checkbox" class="arch-cb" value="' + a + '"' + checked + ' style="width:auto;margin-right:0.3rem" onchange="updateCompArch()">' + a + '</label>';
+        }});
+        html += '</div></div>';
+    }}
     box.innerHTML = html;
     auth.style.display = needs_auth ? 'flex' : 'none';
     submit.style.display = html ? 'block' : 'none';
@@ -403,6 +459,27 @@ function updateCatalog() {{
     }} else {{
         existing.value = distro;
     }}
+    updateCompArch();
+}}
+function updateCompArch() {{
+    var comps = Array.from(document.querySelectorAll('.comp-cb:checked')).map(function(cb){{ return cb.value; }}).join(',');
+    var archs = Array.from(document.querySelectorAll('.arch-cb:checked')).map(function(cb){{ return cb.value; }}).join(',');
+    // Update hidden fields
+    var form = document.getElementById('catalog-form');
+    var compField = form.querySelector('input[name="components_override"]');
+    var archField = form.querySelector('input[name="architectures_override"]');
+    if (!compField && comps) {{
+        compField = document.createElement('input');
+        compField.type = 'hidden'; compField.name = 'components_override';
+        form.appendChild(compField);
+    }}
+    if (!archField && archs) {{
+        archField = document.createElement('input');
+        archField.type = 'hidden'; archField.name = 'architectures_override';
+        form.appendChild(archField);
+    }}
+    if (compField) compField.value = comps;
+    if (archField) archField.value = archs;
 }}
 </script>"##,
         first_product_id = products.first().map(|p| p.id.as_str()).unwrap_or(""),
@@ -473,13 +550,20 @@ pub async fn create_batch(
         let kr = &KNOWN_REPOS[idx];
 
         let mut repo = if kr.content_type == "deb" {
+            // Use component/arch overrides from checkboxes if provided
+            let comps = body.components_override.as_deref()
+                .filter(|s| !s.is_empty())
+                .unwrap_or(kr.components.unwrap_or("main"));
+            let archs = body.architectures_override.as_deref()
+                .filter(|s| !s.is_empty())
+                .unwrap_or(kr.architectures.unwrap_or("amd64"));
             Repository::new_deb(
                 &body.product_id,
                 kr.name,
                 kr.url,
                 kr.codename.unwrap_or("stable"),
-                kr.components.unwrap_or("main"),
-                kr.architectures.unwrap_or("amd64"),
+                comps,
+                archs,
             )
         } else {
             Repository::new(&body.product_id, kr.name, kr.url)

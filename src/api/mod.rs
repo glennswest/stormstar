@@ -23,12 +23,14 @@ use native_db::Database;
 use serde::Serialize;
 
 use crate::config::Config;
+use crate::content::download::ProgressMap;
 
 /// Shared application state.
 #[derive(Clone)]
 pub struct AppState {
     pub db: Arc<Database<'static>>,
     pub config: Arc<Config>,
+    pub progress: ProgressMap,
 }
 
 /// API error type.
@@ -77,7 +79,7 @@ struct HealthResponse {
 async fn health() -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "ok",
-        version: "0.4.0",
+        version: "0.5.0",
     })
 }
 

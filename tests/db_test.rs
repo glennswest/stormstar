@@ -82,6 +82,9 @@ fn test_package_nevra() {
         sha256: String::new(),
         size: 0,
         location_href: String::new(),
+        downloaded: false,
+        local_path: String::new(),
+        download_size: 0,
         created_at: String::new(),
     };
     assert_eq!(pkg.nevra(), "bash-5.1.8-6.el9.x86_64");

@@ -7,7 +7,7 @@ use stormstar::config::Config;
 use stormstar::db;
 
 #[derive(Parser)]
-#[command(name = "stormstar", version = "0.4.0", about = "Lightweight RPM and APT content management")]
+#[command(name = "stormstar", version = "0.5.0", about = "Lightweight RPM and APT content management")]
 struct Cli {
     /// Path to configuration file
     #[arg(short, long, default_value = "/etc/stormstar/stormstar.toml")]
@@ -84,7 +84,7 @@ async fn main() -> anyhow::Result<()> {
                 .with_env_filter(filter)
                 .init();
 
-            tracing::info!("StormStar v0.4.0 starting");
+            tracing::info!("StormStar v0.5.0 starting");
 
             // Ensure data directories
             config.ensure_dirs()?;
@@ -96,19 +96,23 @@ async fn main() -> anyhow::Result<()> {
 
             let database = Arc::new(database);
             let config = Arc::new(config);
+            let progress = stormstar::content::download::new_progress_map();
 
             // Build API router
             let state = stormstar::api::AppState {
                 db: database.clone(),
                 config: config.clone(),
+                progress: progress.clone(),
             };
             let content_state = stormstar::content::serve::ContentState {
                 db: database.clone(),
                 config: config.clone(),
+                progress: progress.clone(),
             };
             let web_state = stormstar::web::WebState {
                 db: database,
                 config: config.clone(),
+                progress,
             };
             let app = stormstar::api::router(state)
                 .merge(stormstar::content::serve::routes().with_state(content_state))

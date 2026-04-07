@@ -98,6 +98,12 @@ pub struct Repository {
     pub components: Option<String>,     // deb: e.g. "main,restricted,universe"
     #[serde(default)]
     pub architectures: Option<String>,  // deb: e.g. "amd64,arm64"
+    #[serde(default)]
+    pub total_size_bytes: u64,
+    #[serde(default)]
+    pub downloaded_size_bytes: u64,
+    #[serde(default)]
+    pub downloaded_package_count: u64,
     #[serde(default = "default_true")]
     pub enabled: bool,
     #[serde(default)]
@@ -126,6 +132,9 @@ impl Repository {
             last_sync: None,
             package_count: 0,
             errata_count: 0,
+            total_size_bytes: 0,
+            downloaded_size_bytes: 0,
+            downloaded_package_count: 0,
             codename: None,
             components: None,
             architectures: None,
@@ -152,6 +161,9 @@ impl Repository {
             last_sync: None,
             package_count: 0,
             errata_count: 0,
+            total_size_bytes: 0,
+            downloaded_size_bytes: 0,
+            downloaded_package_count: 0,
             codename: Some(codename.to_string()),
             components: Some(components.to_string()),
             architectures: Some(architectures.to_string()),
@@ -185,6 +197,12 @@ pub struct Package {
     pub sha256: String,
     pub size: u64,
     pub location_href: String,
+    #[serde(default)]
+    pub downloaded: bool,
+    #[serde(default)]
+    pub local_path: String,
+    #[serde(default)]
+    pub download_size: u64,
     pub created_at: String,
 }
 
@@ -541,6 +559,14 @@ pub struct SyncLog {
     pub message: String,
     pub packages_synced: u64,
     pub errata_synced: u64,
+    #[serde(default)]
+    pub packages_downloaded: u64,
+    #[serde(default)]
+    pub packages_skipped: u64,
+    #[serde(default)]
+    pub bytes_downloaded: u64,
+    #[serde(default)]
+    pub total_size_bytes: u64,
     pub started_at: String,
     pub finished_at: Option<String>,
 }
@@ -555,6 +581,10 @@ impl SyncLog {
             message: String::new(),
             packages_synced: 0,
             errata_synced: 0,
+            packages_downloaded: 0,
+            packages_skipped: 0,
+            bytes_downloaded: 0,
+            total_size_bytes: 0,
             started_at: chrono::Utc::now().to_rfc3339(),
             finished_at: None,
         }

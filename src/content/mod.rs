@@ -7,3 +7,4 @@ pub mod deb;
 pub mod view;
 pub mod lifecycle;
 pub mod serve;
+pub mod download;

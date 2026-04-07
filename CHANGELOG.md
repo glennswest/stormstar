@@ -1,5 +1,31 @@
 # Changelog
 
+## [v0.5.0] — 2026-04-07
+
+### Added
+- **Full local package downloads** — sync downloads actual RPM/deb files to disk, no more upstream proxy dependency
+- **Download engine** — new `src/content/download.rs` with concurrent downloads, SHA256 verification, atomic writes, progress tracking
+- **Local disk serving** — packages served from `{data_dir}/repos/{repo_id}/` with streaming via `tokio-util::ReaderStream`; upstream proxy fallback for non-downloaded packages
+- **Sync progress tracking** — live `SyncProgress` struct with phase, downloaded/skipped/failed counts, bytes, current package name
+- **Progress API** — `GET /api/v1/repos/{id}/sync-progress` returns live download progress during sync
+- **Size estimate API** — `GET /api/v1/repos/{id}/size-estimate` returns total/downloaded size in human-readable format
+- **Package browser** — new `/ui/repos/{id}/packages` page with search by name, architecture filter dropdown, pagination (50/page), Local/Upstream source badges
+- **Component/architecture selectors** — deb catalog shows checkboxes for available components (main, contrib, non-free, etc.) and architectures (amd64, arm64, i386) with sensible defaults
+- **Download concurrency config** — `download_concurrency` setting in TOML config (default: 4 parallel downloads)
+- **Size and download columns** — repo table shows total size (human-readable) and downloaded/total package counts
+- **Sync progress display** — when syncing, HTMX polls progress endpoint every 2s to show live status
+- **5 new tests** — `rpm_local_path`, `deb_local_path`, `is_already_downloaded`, `format_bytes` (download engine unit tests)
+
+### Changed
+- **Deb catalog defaults** — Debian and Ubuntu repos now default to `main` component and `amd64` architecture only (previously synced all components, causing ~1.28M package count)
+- **Package model** — added `downloaded`, `local_path`, `download_size` fields (serde default for backward compat)
+- **Repository model** — added `total_size_bytes`, `downloaded_size_bytes`, `downloaded_package_count` fields
+- **SyncLog model** — added `packages_downloaded`, `packages_skipped`, `bytes_downloaded`, `total_size_bytes` fields
+- **Sync engine** — `sync_repo()` now takes `config` and `progress` params; downloads packages after metadata sync
+- **Repo table** — name is now a link to package browser; added Size and Downloaded columns
+- **AppState/WebState/ContentState** — all include `ProgressMap` for shared progress tracking
+- **Dependencies** — added `tokio-util` 0.7 with `io` feature for streaming file serving
+
 ## [v0.4.0] — 2026-04-07
 
 ### Added

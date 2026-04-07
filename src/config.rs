@@ -19,6 +19,9 @@ pub struct Config {
 
     #[serde(default)]
     pub log_level: Option<String>,
+
+    #[serde(default = "default_download_concurrency")]
+    pub download_concurrency: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,6 +38,10 @@ fn default_data_dir() -> String {
     "/data/stormstar".to_string()
 }
 
+fn default_download_concurrency() -> usize {
+    4
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -43,6 +50,7 @@ impl Default for Config {
             tls: None,
             organization: None,
             log_level: None,
+            download_concurrency: default_download_concurrency(),
         }
     }
 }
