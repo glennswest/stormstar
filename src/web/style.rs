@@ -1,19 +1,19 @@
-//! Shared CSS, nav bar, layout wrapper (Dracula theme).
+//! Shared CSS, nav bar, layout wrapper (dark gray theme).
 
 pub const CSS: &str = r#"
 :root {
-    --bg: #282a36;
-    --bg-dark: #21222c;
-    --bg-light: #44475a;
-    --fg: #f8f8f2;
-    --fg-dim: #6272a4;
-    --cyan: #8be9fd;
-    --green: #50fa7b;
-    --orange: #ffb86c;
-    --pink: #ff79c6;
-    --purple: #bd93f9;
-    --red: #ff5555;
-    --yellow: #f1fa8c;
+    --bg: #0d1117;
+    --bg-dark: #010409;
+    --bg-light: #21262d;
+    --fg: #e6edf3;
+    --fg-dim: #7d8590;
+    --cyan: #39d353;
+    --green: #3fb950;
+    --orange: #d29922;
+    --pink: #58a6ff;
+    --purple: #58a6ff;
+    --red: #f85149;
+    --yellow: #d29922;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -129,7 +129,7 @@ button, .btn {
 button:hover, .btn:hover { background: var(--pink); }
 
 button.danger { background: var(--red); }
-button.danger:hover { background: #ff3333; }
+button.danger:hover { background: #da3633; }
 
 button.sm { padding: 0.3rem 0.6rem; font-size: 0.75rem; }
 
@@ -233,6 +233,7 @@ pub fn layout(title: &str, active: &str, content: &str) -> String {
             <a href="/ui/hosts" {ha}>Hosts</a>
             <a href="/ui/errata" {xa}>Errata</a>
             <a href="/ui/keys" {ka}>Keys</a>
+            <a href="/ui/logs" {la}>Logs</a>
         </div>
     </nav>
     <div class="container">
@@ -250,5 +251,6 @@ pub fn layout(title: &str, active: &str, content: &str) -> String {
         ha = if active == "hosts" { r#"class="active""# } else { "" },
         xa = if active == "errata" { r#"class="active""# } else { "" },
         ka = if active == "keys" { r#"class="active""# } else { "" },
+        la = if active == "logs" { r#"class="active""# } else { "" },
     )
 }

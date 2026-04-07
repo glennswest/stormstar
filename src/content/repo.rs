@@ -11,6 +11,30 @@ use super::repodata;
 use super::errata as errata_parser;
 use super::deb;
 
+/// Build an HTTP client with optional SSL client cert auth (for RHEL CDN).
+fn build_client(repo: &Repository) -> Result<reqwest::Client> {
+    let mut builder = reqwest::Client::builder()
+        .danger_accept_invalid_certs(true);
+
+    if let (Some(cert_path), Some(key_path)) = (&repo.ssl_client_cert, &repo.ssl_client_key) {
+        let cert_pem = std::fs::read(cert_path)?;
+        let key_pem = std::fs::read(key_path)?;
+        let identity = reqwest::Identity::from_pem(&[cert_pem, key_pem].concat())?;
+        builder = builder.identity(identity);
+    }
+
+    builder.build().map_err(Into::into)
+}
+
+/// Apply HTTP Basic Auth if repo has username/password.
+fn apply_auth(req: reqwest::RequestBuilder, repo: &Repository) -> reqwest::RequestBuilder {
+    if let (Some(user), Some(pass)) = (&repo.username, &repo.password) {
+        req.basic_auth(user, Some(pass))
+    } else {
+        req
+    }
+}
+
 /// Sync a repository: fetch metadata, parse packages and errata, store in DB.
 pub async fn sync_repo(db: &Arc<Database<'static>>, repo_id: &str) -> Result<()> {
     // Load repo from DB
@@ -20,7 +44,22 @@ pub async fn sync_repo(db: &Arc<Database<'static>>, repo_id: &str) -> Result<()>
             .ok_or_else(|| anyhow::anyhow!("repository not found: {}", repo_id))?
     };
 
+    // Skip disabled repos
+    if !repo.enabled {
+        tracing::info!("Skipping disabled repository '{}'", repo.name);
+        return Ok(());
+    }
+
     tracing::info!("Syncing repository '{}' from {}", repo.name, repo.url);
+
+    // Write "started" sync log
+    let sync_log = SyncLog::new_started(&repo.id, &repo.name);
+    let log_id = sync_log.id.clone();
+    {
+        let rw = db.rw_transaction()?;
+        rw.insert(sync_log).map_err(|e| anyhow::anyhow!("{}", e))?;
+        rw.commit()?;
+    }
 
     // Mark as syncing
     {
@@ -51,10 +90,30 @@ pub async fn sync_repo(db: &Arc<Database<'static>>, repo_id: &str) -> Result<()>
             updated.errata_count = *errata_count;
             updated.last_sync = Some(chrono::Utc::now().to_rfc3339());
             tracing::info!("Sync complete: {} packages, {} errata", pkg_count, errata_count);
+
+            // Update sync log to success
+            if let Ok(Some(old_log)) = rw.get().primary::<SyncLog>(log_id.clone()) {
+                let mut log = old_log.clone();
+                log.status = "success".to_string();
+                log.message = format!("{} packages, {} errata", pkg_count, errata_count);
+                log.packages_synced = *pkg_count;
+                log.errata_synced = *errata_count;
+                log.finished_at = Some(chrono::Utc::now().to_rfc3339());
+                let _ = rw.update(old_log, log);
+            }
         }
         Err(e) => {
             updated.sync_state = RepoSyncState::Failed;
             tracing::error!("Sync failed for '{}': {}", repo.name, e);
+
+            // Update sync log to failed
+            if let Ok(Some(old_log)) = rw.get().primary::<SyncLog>(log_id.clone()) {
+                let mut log = old_log.clone();
+                log.status = "failed".to_string();
+                log.message = e.to_string();
+                log.finished_at = Some(chrono::Utc::now().to_rfc3339());
+                let _ = rw.update(old_log, log);
+            }
         }
     }
 
@@ -65,16 +124,14 @@ pub async fn sync_repo(db: &Arc<Database<'static>>, repo_id: &str) -> Result<()>
 }
 
 async fn do_sync_yum(db: &Arc<Database<'static>>, repo: &Repository) -> Result<(u64, u64)> {
-    let client = reqwest::Client::builder()
-        .danger_accept_invalid_certs(true)
-        .build()?;
+    let client = build_client(repo)?;
 
     let base_url = repo.url.trim_end_matches('/');
 
     // 1. Fetch repomd.xml
     let repomd_url = format!("{}/repodata/repomd.xml", base_url);
     tracing::info!("Fetching {}", repomd_url);
-    let repomd_xml = client.get(&repomd_url).send().await?
+    let repomd_xml = apply_auth(client.get(&repomd_url), repo).send().await?
         .error_for_status()
         .context("failed to fetch repomd.xml")?
         .text().await?;
@@ -88,7 +145,7 @@ async fn do_sync_yum(db: &Arc<Database<'static>>, repo: &Repository) -> Result<(
 
     let primary_url = format!("{}/{}", base_url, primary_entry.location);
     tracing::info!("Fetching {}", primary_url);
-    let primary_gz = client.get(&primary_url).send().await?
+    let primary_gz = apply_auth(client.get(&primary_url), repo).send().await?
         .error_for_status()
         .context("failed to fetch primary.xml.gz")?
         .bytes().await?;
@@ -139,7 +196,7 @@ async fn do_sync_yum(db: &Arc<Database<'static>>, repo: &Repository) -> Result<(
         let updateinfo_url = format!("{}/{}", base_url, updateinfo_entry.location);
         tracing::info!("Fetching {}", updateinfo_url);
 
-        match client.get(&updateinfo_url).send().await {
+        match apply_auth(client.get(&updateinfo_url), repo).send().await {
             Ok(resp) => {
                 if resp.status().is_success() {
                     let updateinfo_gz = resp.bytes().await?;
@@ -203,9 +260,7 @@ async fn do_sync_yum(db: &Arc<Database<'static>>, repo: &Repository) -> Result<(
 
 /// Sync a deb (APT) repository: fetch Release, then Packages.gz for each component/arch combo.
 async fn do_sync_deb(db: &Arc<Database<'static>>, repo: &Repository) -> Result<(u64, u64)> {
-    let client = reqwest::Client::builder()
-        .danger_accept_invalid_certs(true)
-        .build()?;
+    let client = build_client(repo)?;
 
     let base_url = repo.url.trim_end_matches('/');
     let codename = repo.codename.as_deref().unwrap_or("stable");
@@ -221,7 +276,7 @@ async fn do_sync_deb(db: &Arc<Database<'static>>, repo: &Repository) -> Result<(
     // 1. Fetch Release file
     let release_url = format!("{}/dists/{}/Release", base_url, codename);
     tracing::info!("Fetching {}", release_url);
-    let _release_text = client.get(&release_url).send().await?
+    let _release_text = apply_auth(client.get(&release_url), repo).send().await?
         .error_for_status()
         .context("failed to fetch Release")?
         .text().await?;
@@ -237,7 +292,7 @@ async fn do_sync_deb(db: &Arc<Database<'static>>, repo: &Repository) -> Result<(
             );
             tracing::info!("Fetching {}", packages_url);
 
-            match client.get(&packages_url).send().await {
+            match apply_auth(client.get(&packages_url), repo).send().await {
                 Ok(resp) => {
                     if resp.status().is_success() {
                         let gz_data = resp.bytes().await?;

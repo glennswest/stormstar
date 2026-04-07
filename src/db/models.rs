@@ -72,6 +72,8 @@ pub enum RepoSyncState {
     Failed,
 }
 
+fn default_true() -> bool { true }
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[native_model(id = 3, version = 1)]
 #[native_db]
@@ -96,6 +98,16 @@ pub struct Repository {
     pub components: Option<String>,     // deb: e.g. "main,restricted,universe"
     #[serde(default)]
     pub architectures: Option<String>,  // deb: e.g. "amd64,arm64"
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub username: Option<String>,
+    #[serde(default)]
+    pub password: Option<String>,
+    #[serde(default)]
+    pub ssl_client_cert: Option<String>,   // path to PEM cert
+    #[serde(default)]
+    pub ssl_client_key: Option<String>,    // path to PEM key
     pub created_at: String,
 }
 
@@ -117,6 +129,11 @@ impl Repository {
             codename: None,
             components: None,
             architectures: None,
+            enabled: true,
+            username: None,
+            password: None,
+            ssl_client_cert: None,
+            ssl_client_key: None,
             created_at: chrono::Utc::now().to_rfc3339(),
         }
     }
@@ -138,6 +155,11 @@ impl Repository {
             codename: Some(codename.to_string()),
             components: Some(components.to_string()),
             architectures: Some(architectures.to_string()),
+            enabled: true,
+            username: None,
+            password: None,
+            ssl_client_cert: None,
+            ssl_client_key: None,
             created_at: chrono::Utc::now().to_rfc3339(),
         }
     }
@@ -500,6 +522,41 @@ impl HostCollection {
             host_ids: Vec::new(),
             max_hosts: None,
             created_at: chrono::Utc::now().to_rfc3339(),
+        }
+    }
+}
+
+// ── SyncLog ──────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[native_model(id = 14, version = 1)]
+#[native_db]
+pub struct SyncLog {
+    #[primary_key]
+    pub id: String,
+    #[secondary_key]
+    pub repo_id: String,
+    pub repo_name: String,
+    pub status: String,        // "started", "success", "failed"
+    pub message: String,
+    pub packages_synced: u64,
+    pub errata_synced: u64,
+    pub started_at: String,
+    pub finished_at: Option<String>,
+}
+
+impl SyncLog {
+    pub fn new_started(repo_id: &str, repo_name: &str) -> Self {
+        Self {
+            id: Uuid::new_v4().to_string(),
+            repo_id: repo_id.to_string(),
+            repo_name: repo_name.to_string(),
+            status: "started".to_string(),
+            message: String::new(),
+            packages_synced: 0,
+            errata_synced: 0,
+            started_at: chrono::Utc::now().to_rfc3339(),
+            finished_at: None,
         }
     }
 }

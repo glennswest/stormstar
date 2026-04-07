@@ -31,6 +31,16 @@ struct CreateRepo {
     codename: Option<String>,
     components: Option<String>,
     architectures: Option<String>,
+    #[serde(default)]
+    enabled: Option<bool>,
+    #[serde(default)]
+    username: Option<String>,
+    #[serde(default)]
+    password: Option<String>,
+    #[serde(default)]
+    ssl_client_cert: Option<String>,
+    #[serde(default)]
+    ssl_client_key: Option<String>,
 }
 
 fn default_content_type() -> String { "yum".to_string() }
@@ -45,6 +55,11 @@ struct UpdateRepo {
     codename: Option<String>,
     components: Option<String>,
     architectures: Option<String>,
+    enabled: Option<bool>,
+    username: Option<String>,
+    password: Option<String>,
+    ssl_client_cert: Option<String>,
+    ssl_client_key: Option<String>,
 }
 
 async fn list(State(state): State<AppState>) -> Result<Json<Vec<Repository>>, AppError> {
@@ -73,7 +88,7 @@ async fn create(
     State(state): State<AppState>,
     Json(body): Json<CreateRepo>,
 ) -> Result<(StatusCode, Json<Repository>), AppError> {
-    let repo = if body.content_type == "deb" {
+    let mut repo = if body.content_type == "deb" {
         Repository::new_deb(
             &body.product_id,
             &body.name,
@@ -88,6 +103,12 @@ async fn create(
         r.arch = body.arch;
         r
     };
+
+    if let Some(enabled) = body.enabled { repo.enabled = enabled; }
+    if let Some(u) = body.username { if !u.is_empty() { repo.username = Some(u); } }
+    if let Some(p) = body.password { if !p.is_empty() { repo.password = Some(p); } }
+    if let Some(c) = body.ssl_client_cert { if !c.is_empty() { repo.ssl_client_cert = Some(c); } }
+    if let Some(k) = body.ssl_client_key { if !k.is_empty() { repo.ssl_client_key = Some(k); } }
 
     let rw = state.db.rw_transaction().map_err(|e| AppError::internal(e.to_string()))?;
     rw.insert(repo.clone()).map_err(|e| AppError::internal(e.to_string()))?;
@@ -114,6 +135,11 @@ async fn update(
     if let Some(cn) = body.codename { updated.codename = Some(cn); }
     if let Some(comp) = body.components { updated.components = Some(comp); }
     if let Some(archs) = body.architectures { updated.architectures = Some(archs); }
+    if let Some(enabled) = body.enabled { updated.enabled = enabled; }
+    if let Some(u) = body.username { updated.username = if u.is_empty() { None } else { Some(u) }; }
+    if let Some(p) = body.password { updated.password = if p.is_empty() { None } else { Some(p) }; }
+    if let Some(c) = body.ssl_client_cert { updated.ssl_client_cert = if c.is_empty() { None } else { Some(c) }; }
+    if let Some(k) = body.ssl_client_key { updated.ssl_client_key = if k.is_empty() { None } else { Some(k) }; }
 
     rw.update(old, updated.clone()).map_err(|e| AppError::internal(e.to_string()))?;
     rw.commit().map_err(|e| AppError::internal(e.to_string()))?;

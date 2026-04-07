@@ -72,6 +72,15 @@ pub enum RepoAction {
         /// APT architectures (e.g. "amd64,arm64") — deb repos only
         #[arg(long)]
         architectures: Option<String>,
+        /// HTTP Basic Auth username
+        #[arg(long)]
+        username: Option<String>,
+        /// HTTP Basic Auth password
+        #[arg(long)]
+        password: Option<String>,
+        /// Create the repo in disabled state
+        #[arg(long)]
+        disabled: bool,
     },
     /// Trigger repository sync
     Sync { id: String },
@@ -86,7 +95,7 @@ pub async fn handle_repo(config: &Config, action: RepoAction) -> anyhow::Result<
             let v = get_json(&format!("{}/repos", base)).await?;
             println!("{}", serde_json::to_string_pretty(&v)?);
         }
-        RepoAction::Create { product_id, name, url, content_type, codename, components, architectures } => {
+        RepoAction::Create { product_id, name, url, content_type, codename, components, architectures, username, password, disabled } => {
             let mut body = serde_json::json!({
                 "product_id": product_id,
                 "name": name,
@@ -96,6 +105,9 @@ pub async fn handle_repo(config: &Config, action: RepoAction) -> anyhow::Result<
             if let Some(cn) = codename { body["codename"] = serde_json::json!(cn); }
             if let Some(comp) = components { body["components"] = serde_json::json!(comp); }
             if let Some(archs) = architectures { body["architectures"] = serde_json::json!(archs); }
+            if let Some(u) = username { body["username"] = serde_json::json!(u); }
+            if let Some(p) = password { body["password"] = serde_json::json!(p); }
+            if disabled { body["enabled"] = serde_json::json!(false); }
             let v = post_json(&format!("{}/repos", base), &body).await?;
             println!("{}", serde_json::to_string_pretty(&v)?);
         }

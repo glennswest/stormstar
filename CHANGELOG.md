@@ -1,5 +1,25 @@
 # Changelog
 
+## [v0.4.0] — 2026-04-07
+
+### Added
+- **Known repo catalog** — distro-based selector for CentOS 7, Rocky 8/9, AlmaLinux 8/9, RHEL 7/8/9, EPEL 7/8/9, Debian Bookworm, Ubuntu Noble
+- **Batch repo creation** — select distro, check repos, create all at once via `POST /ui/repos/create-batch`
+- **RHEL CDN auth** — SSL client certificate support (`ssl_client_cert`, `ssl_client_key` fields) for Red Hat CDN repos
+- **HTTP Basic Auth** — `username` and `password` fields on Repository for authenticated repo sync
+- **Enable/disable repos** — `enabled` boolean field with toggle button in UI; disabled repos skip sync
+- **Sync Logs** — new `SyncLog` model (native_model id=14) tracking every sync start/success/failure with timing and counts
+- **Sync Logs page** — `/ui/logs` showing sync history with status badges, duration, package/errata counts
+- **Relative timestamps** — "just now", "5 minutes ago", "yesterday", "3 days ago" instead of raw RFC3339
+- **Dashboard sync log card** — clickable stat card for sync logs count
+
+### Changed
+- **UI theme** — replaced Dracula purple/pink with clean dark gray (GitHub dark mode) + blue accents
+- **Repos page** — redesigned with catalog selector, custom form, auth fields, enable/disable toggle
+- **Sync engine** — uses `build_client()` + `apply_auth()` helpers for SSL cert and Basic Auth
+- **API** — `CreateRepo` and `UpdateRepo` accept `enabled`, `username`, `password`, `ssl_client_cert`, `ssl_client_key`
+- **CLI** — `repo create` gains `--username`, `--password`, `--disabled` flags
+
 ## [v0.3.0] — 2026-04-05
 
 ### Added
@@ -23,19 +43,6 @@
 
 ## [Unreleased]
 
-### 2026-04-05
-- **feat:** Errata sync engine — standalone errata fetch across all synced repos (API + CLI + UI)
-- **feat:** HTMX interactive UI — create/delete forms on all pages (repos, views, envs, hosts, keys)
-- **feat:** Errata page stats breakdown (security/bugfix/enhancement counts)
-- **feat:** Dashboard clickable stat cards, activation key count added
-- **feat:** CLI `stormstar errata list|sync` commands
-- **chore:** CI/CD workflow for mkube self-hosted runner (GitHub Actions, podman, GHCR)
-- **chore:** Containerfile (stormdbase, stormd supervised, aarch64-musl)
-- **chore:** deploy/stormd.toml — stormd supervisor config with liveness probe and UI proxy
-- **chore:** deploy/stormstar.yaml — mkube Pod manifest with vkube annotations
-- **chore:** .cargo/config.toml — aarch64-linux-musl cross-linker
-- **fix:** Version mismatch in main.rs (0.1.0 → 0.2.0)
-- **docs:** Updated README with architecture, CI/CD, container build sections
 
 ## [v0.2.0] — 2026-04-05
 

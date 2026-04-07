@@ -24,6 +24,8 @@ pub async fn page(State(state): State<WebState>) -> Html<String> {
         .map(|s| s.all().map(|a| a.count()).unwrap_or(0)).unwrap_or(0);
     let key_count = r.scan().primary::<ActivationKey>()
         .map(|s| s.all().map(|a| a.count()).unwrap_or(0)).unwrap_or(0);
+    let sync_log_count = r.scan().primary::<SyncLog>()
+        .map(|s| s.all().map(|a| a.count()).unwrap_or(0)).unwrap_or(0);
 
     let content = format!(
         r#"<h1>Dashboard</h1>
@@ -66,6 +68,12 @@ pub async fn page(State(state): State<WebState>) -> Html<String> {
         <div class="card stat">
             <div class="value">{key_count}</div>
             <div class="label">Activation Keys</div>
+        </div>
+    </a>
+    <a href="/ui/logs" style="text-decoration:none">
+        <div class="card stat">
+            <div class="value">{sync_log_count}</div>
+            <div class="label">Sync Logs</div>
         </div>
     </a>
 </div>"#

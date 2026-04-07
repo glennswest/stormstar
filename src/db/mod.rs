@@ -23,6 +23,7 @@ pub static MODELS: Lazy<Models> = Lazy::new(|| {
     models.define::<ActivationKey>().expect("ActivationKey model");
     models.define::<SyncPlan>().expect("SyncPlan model");
     models.define::<HostCollection>().expect("HostCollection model");
+    models.define::<SyncLog>().expect("SyncLog model");
     models
 });
 
